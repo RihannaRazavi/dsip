@@ -1,0 +1,8 @@
+name: dsip_cancer
+channels:
+  - defaults
+dependencies:
+  - python=3.12.2
+  - pandas
+  - jupyterlab
+prefix: /opt/miniconda3/envs/dsip_cancer
