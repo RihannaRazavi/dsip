@@ -20,19 +20,7 @@ def merge_with_locations(redwood_df, motes_df):
 
 
 def add_time_features(data):
-    """
-    Extract time-based features from result_time
     
-    Parameters
-    ----------
-    data : pd.DataFrame
-        Dataframe with result_time column
-    
-    Returns
-    -------
-    pd.DataFrame
-        Dataframe with added time features
-    """
     data = data.copy()
     
     # Ensure datetime type
@@ -47,23 +35,6 @@ def add_time_features(data):
 
 
 def classify_canopy_layers(data, lower_bound=35, upper_bound=55):
-    """
-    Classify sensors into canopy layers based on height
-    
-    Parameters
-    ----------
-    data : pd.DataFrame
-        Dataframe with Height column
-    lower_bound : float
-        Height boundary between lower and middle canopy (meters)
-    upper_bound : float
-        Height boundary between middle and upper canopy (meters)
-    
-    Returns
-    -------
-    pd.DataFrame
-        Dataframe with canopy_layer column added
-    """
     data = data.copy()
     
     data['canopy_layer'] = pd.cut(
@@ -76,21 +47,7 @@ def classify_canopy_layers(data, lower_bound=35, upper_bound=55):
 
 
 def prepare_analysis_data(redwood_df, motes_df):
-    """
-    Complete data preparation pipeline
     
-    Parameters
-    ----------
-    redwood_df : pd.DataFrame
-        Cleaned redwood sensor data
-    motes_df : pd.DataFrame
-        Cleaned mote location data
-    
-    Returns
-    -------
-    pd.DataFrame
-        Analysis-ready dataframe
-    """
     # Merge with locations
     data = merge_with_locations(redwood_df, motes_df)
     
@@ -104,23 +61,7 @@ def prepare_analysis_data(redwood_df, motes_df):
 
 
 def filter_daytime_data(data, start_hour=10, end_hour=16):
-    """
-    Filter data to daytime hours with adequate light
     
-    Parameters
-    ----------
-    data : pd.DataFrame
-        Dataframe with hour column
-    start_hour : int
-        Start of daytime period (inclusive)
-    end_hour : int
-        End of daytime period (inclusive)
-    
-    Returns
-    -------
-    pd.DataFrame
-        Filtered daytime data
-    """
     daytime = data[
         (data['hour'] >= start_hour) & 
         (data['hour'] <= end_hour)
