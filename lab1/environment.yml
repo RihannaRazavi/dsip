@@ -1,11 +1,14 @@
 name: dsip_lab1
 channels:
-  - conda-forge
   - defaults
 dependencies:
-  - numpy
+  - python=3.14.2
   - pandas
-  - statsmodels
-  - conda-lock
   - jupyterlab
-prefix: /opt/anaconda3/envs/dsip_lab1
+  - ipykernel
+  - statsmodels
+  - numpy
+  - conda-lock
+  - seaborn
+  - matplotlib
+prefix: /opt/miniconda3/envs/dsip_lab1

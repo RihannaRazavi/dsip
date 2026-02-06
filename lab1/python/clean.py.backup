@@ -1,0 +1,118 @@
+import pandas as pd
+import numpy as np
+
+
+def clean_dates_data(dates_data):
+    '''
+    Clean the dates data
+
+    Parameters
+    ----------
+    dates_data : pd.DataFrame
+        Dataframe containing the epoch information with three columns: 
+        'epoch number', 'date', 'day'
+
+    Returns
+    -------
+    dates_data : pd.DataFrame
+        Dataframe containing the cleaned epoch information
+    '''
+
+    # Extract day of the week
+    dates_data['day_of_week'] = dates_data['date'].str.extract(r'(Mon|Tue|Wed|Thu|Fri|Sat|Sun)')
+    
+    # Extract time
+    dates_data['time_chr'] = dates_data['date'].str.extract(r'(\d{1,2}:\d{2}:\d{2})')
+    dates_data['time'] = pd.to_datetime(dates_data['time_chr'], format='%H:%M:%S')
+    
+    # Extract and clean date
+    dates_data['date_chr'] = dates_data['date'].str.replace(r'\d{1,2}:\d{2}:\d{2} ', '', regex=True)
+    dates_data['date'] = pd.to_datetime(dates_data['date_chr'])
+    
+    # Combine date and time
+    dates_data['datetime'] = pd.to_datetime(dates_data['date_chr'] + ' ' + dates_data['time_chr'])
+
+    return dates_data
+
+
+def clean_redwood_data(redwood_data):
+    '''
+    Clean the redwood data
+    
+    Parameters
+    ----------
+    redwood_data : pd.DataFrame
+        Dataframe containing the redwood data
+
+    Returns
+    -------
+    redwood_data : pd.DataFrame
+        Dataframe containing the cleaned redwood data
+    '''
+    # STEP 1: Remove duplicate readings (same sensor, same time)
+    redwood_data = redwood_data.drop_duplicates(
+        subset=['nodeid', 'result_time', 'epoch'], 
+        keep='first'
+    ).copy()
+    
+    # STEP 2: Convert result_time to datetime
+    # Use format='mixed' because some timestamps have milliseconds and some don't
+    redwood_data['result_time'] = pd.to_datetime(redwood_data['result_time'], format='mixed')
+    
+    # STEP 3: Remove rows with voltage outside acceptable range (2.4 to 3.0 volts)
+    redwood_data = redwood_data[
+        (redwood_data['voltage'] >= 2.4) & 
+        (redwood_data['voltage'] <= 3.0)
+    ].copy()
+    
+    # STEP 4: Remove impossible humidity values (should be 0-100%)
+    redwood_data = redwood_data[
+        (redwood_data['humidity'] >= 0) & 
+        (redwood_data['humidity'] <= 100)
+    ].copy()
+    
+    # STEP 5: Remove extreme temperature outliers (reasonable range: -20 to 50°C)
+    redwood_data = redwood_data[
+        (redwood_data['humid_temp'] >= -20) & 
+        (redwood_data['humid_temp'] <= 50)
+    ].copy()
+    
+    # STEP 6: Remove negative PAR values (light can't be negative!)
+    if 'hamatop' in redwood_data.columns:
+        redwood_data = redwood_data[
+            redwood_data['hamatop'] >= 0
+        ].copy()
+    
+    if 'hamabot' in redwood_data.columns:
+        redwood_data = redwood_data[
+            redwood_data['hamabot'] >= 0
+        ].copy()
+    
+    return redwood_data
+
+
+def clean_mote_location_data(mote_data):
+    '''
+    Clean the mote location data
+
+    Parameters
+    ----------
+    mote_data : pd.DataFrame
+        Dataframe containing the mote location data
+
+    Returns
+    -------
+    mote_data : pd.DataFrame
+        Dataframe containing the cleaned mote location data
+    '''
+    # Remove any whitespace from column names
+    mote_data.columns = mote_data.columns.str.strip()
+    
+    # Remove any rows with missing values
+    mote_data = mote_data.dropna()
+    
+    # ID should already be int from loading, but just in case
+    if mote_data['ID'].dtype == 'object':
+        mote_data['ID'] = mote_data['ID'].astype(int)
+    
+    return mote_data

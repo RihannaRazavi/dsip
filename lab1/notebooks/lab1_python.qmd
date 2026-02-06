@@ -1,6 +1,6 @@
 ---
-title: "Lab 1 - Redwood Trees"
-author: "Insert Name Here"
+title: "Lab 1 - Redwood Trees: Temperature-Humidity Relationships Across Diffrent Canopy Heights"
+author: "Rihanna Razavi"
 format: 
   html:
     code-fold: true
@@ -13,48 +13,448 @@ execute:
   warning: false
   message: false
 ---
-
-```{python setup}
+```{python}
+#| label: setup
 import sys
 sys.path.append("..")
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from os.path import join as oj
 from python.load import load_dates_data, load_mote_location_data, load_redwood_data
 from python.clean import clean_dates_data, clean_mote_location_data, clean_redwood_data
+from python.prepare import prepare_analysis_data
+from python.stats import calculate_data_quality_metrics
 
 DATA_PATH = oj("..", "data")
 ```
 
 # Introduction
 
+Understanding how environmental conditions vary in forest canopies is essential for predicting tree physiology, carbon cycling, and ecosystem responses to climate change. Temperature and humidity are fundamental drivers of photosynthesis and transpiration in trees, yet their interactions within tall forest canopies remain poorly understood due to the difficulty of measuring these variables at multiple heights all together.
+
+Coastal redwood (*Sequoia sempervirens*) trees create complex microclimates due to their extreme height (often exceeding 70 meters) and dense canopy structure. Traditional ecological theory suggests that upper canopy positions should be hotter and drier due to direct solar exposure, while lower canopy positions should be cooler and more humid. However, the actual temperature-humidity relationships at different canopy heights, and how these relationships reflect different environmental processes, have rarely been quantified at fine spatial scales.
+
+**Research Question:** How does the relationship between temperature and humidity vary across different vertical positions within a coastal redwood canopy? 
+
+
+This analysis uses high-resolution sensor network data from Tolle et al. (2005) collected over 44 days in a single redwood tree to examine how temperature-humidity relationships differ between lower, middle, and upper canopy positions.
+
 # Data Overview and Collection
-
-```{python load-data}
-# load dates data
+```{python}
+#| label: load-data
+# Load individual datasets
 dates_orig = load_dates_data(DATA_PATH)
-
-# load motes data
 motes_orig = load_mote_location_data(DATA_PATH)
-
-# load redwood data
-redwood_all_orig = load_redwood_data(DATA_PATH, source="all")
 redwood_net_orig = load_redwood_data(DATA_PATH, source="net")
 redwood_log_orig = load_redwood_data(DATA_PATH, source="log")
+
+print("=== ORIGINAL DATASETS ===")
+print(f"Network dataset: {len(redwood_net_orig):,} observations")
+print(f"Log dataset: {len(redwood_log_orig):,} observations")
+print(f"Number of unique sensors (net): {redwood_net_orig['nodeid'].nunique()}")
+print(f"Number of unique sensors (log): {redwood_log_orig['nodeid'].nunique()}")
 ```
+
+
+
 
 # Data Cleaning
 
-```{python clean-data}
-# load dates data
-dates_df = clean_dates_data(dates_orig)
+## Step 1: Load Datasets and Examine Voltage Distributions
+```{python}
+#| label: load-datasets
+# Load net and log datasets separately
+redwood_net_orig = load_redwood_data(DATA_PATH, source="net")
+redwood_log_orig = load_redwood_data(DATA_PATH, source="log")
 
-# load motes data
-motes_df = clean_mote_location_data(motes_orig)
+print("=== ORIGINAL DATASETS ===")
+print(f"Network dataset: {len(redwood_net_orig):,} observations")
+print(f"Log dataset: {len(redwood_log_orig):,} observations")
 
-# load redwood data
-redwood_all_df = clean_redwood_data(redwood_all_orig)
-redwood_net_df = clean_redwood_data(redwood_net_orig)
-redwood_log_df = clean_redwood_data(redwood_log_orig)
+net_voltage_mean = redwood_net_orig['voltage'].mean()
+log_voltage_mean = redwood_log_orig['voltage'].mean()
+net_voltage_max = redwood_net_orig['voltage'].max()
+log_voltage_max = redwood_log_orig['voltage'].max()
+
+print(f"\nNet voltage: mean={net_voltage_mean:.2f}, max={net_voltage_max:.2f}")
+print(f"Log voltage: mean={log_voltage_mean:.2f}, max={log_voltage_max:.2f}")
+
+if net_voltage_max > 100 and log_voltage_max < 10:
+    print("Net dataset: Raw ADC values (0-1023)")
+    print("Log dataset: Actual voltages (0-3.3V)")
+    print("These need to be aligned before merging!")
 ```
 
+## Step 2: Empirical Voltage Calibration
+```{python}
+from python.clean import find_empirical_voltage_conversion
+
+# Finding empirical conversion by matching distributions
+#it's a heuristic common approach
+conversion_factor, conversion_offset, calibration_fig = find_empirical_voltage_conversion(
+    redwood_net_orig,
+    redwood_log_orig
+)
+
+print(f"\n EMPIRICAL CONVERSION FORMULA:")
+print(f"   V_corrected = {conversion_factor:.6f} × V_net + {conversion_offset:.6f}")
+```
+```{python}
+#| label: calibration-plot
+#| fig-cap: "Empirical voltage calibration by matching distribution percentiles across log and net (My own idea). Top row: original distributions and percentile-based linear fit showing how to align them. Bottom row: distributions after conversion with overlay (left), valid range zoom (middle), and Q-Q plot confirming alignment (right)."
+
+plt.figure(calibration_fig.number)
+plt.show()
+```
+
+Rather than relying on theoretical conversion formulas that may not reflect the actual hardware configuration, we use an empirical approach to align the voltage distributions. We match the 25th, 50th, and 75th percentiles between the Net and Log datasets to find a linear transformation (scale + offset) that makes the distributions align. This data-driven method accounts for any calibration differences, reference voltage variations, or systematic offsets between the two data collection systems.
+
+## Step 3: Apply Conversion and Merge Datasets
+```{python}
+#| label: apply-conversion-merge
+# Apply empirical conversion to net dataset
+redwood_net_converted = redwood_net_orig.copy()
+redwood_net_converted['voltage'] = (redwood_net_orig['voltage'] * conversion_factor + conversion_offset)
+
+print("=== VOLTAGE AFTER EMPIRICAL CONVERSION ===")
+print(f"Net converted: mean={redwood_net_converted['voltage'].mean():.2f}V, range=[{redwood_net_converted['voltage'].min():.2f}, {redwood_net_converted['voltage'].max():.2f}]")
+print(f"Log original:  mean={redwood_log_orig['voltage'].mean():.2f}V, range=[{redwood_log_orig['voltage'].min():.2f}, {redwood_log_orig['voltage'].max():.2f}]")
+print(f"Mean difference after conversion: {abs(redwood_net_converted['voltage'].mean() - redwood_log_orig['voltage'].mean()):.3f}V")
+
+redwood_net_converted['source'] = 'net'
+redwood_log_orig['source'] = 'log'
+
+redwood_merged = pd.concat([redwood_net_converted, redwood_log_orig], ignore_index=True)
+print(f"Before removing duplicates: {len(redwood_merged):,}")
+
+# Remove duplicates (same sensor, same time, same measurement period)
+redwood_merged = redwood_merged.drop_duplicates(
+    subset=['nodeid', 'result_time', 'epoch'],
+    keep='first'
+)
+
+print(f"After removing duplicates: {len(redwood_merged):,}")
+print(f"\nMerged voltage statistics:")
+print(f"  Mean: {redwood_merged['voltage'].mean():.2f}V")
+print(f"  Min: {redwood_merged['voltage'].min():.2f}V")
+print(f"  Max: {redwood_merged['voltage'].max():.2f}V")
+```
+
+## Step 4: Clean the Merged Dataset
+```{python}
+from python.clean import clean_redwood_data, clean_dates_data, clean_mote_location_data
+
+dates_df = clean_dates_data(dates_orig)
+motes_df = clean_mote_location_data(motes_orig)
+redwood_all_df = clean_redwood_data(redwood_merged)
+
+# Calculate metrics
+quality_metrics = calculate_data_quality_metrics(redwood_merged, redwood_all_df)
+
+print("=== DATA CLEANING SUMMARY ===")
+print(f"Original (merged): {quality_metrics['original_rows']:,}")
+print(f"Cleaned: {quality_metrics['cleaned_rows']:,}")
+print(f"Removed: {quality_metrics['removed_rows']:,} ({100 - quality_metrics['retention_pct']:.1f}%)")
+print(f"Retention: {quality_metrics['retention_pct']:.1f}%")
+
+print(f"\nCleaned voltage statistics:")
+print(f"  Mean: {redwood_all_df['voltage'].mean():.2f}V")
+print(f"  Min: {redwood_all_df['voltage'].min():.2f}V")
+print(f"  Max: {redwood_all_df['voltage'].max():.2f}V")
+```
+```{python}
+#| label: voltage-before-after
+#| fig-cap: "Voltage distribution before and after cleaning. Left: merged data after empirical conversion but before quality filtering shows the full range. Right: after removing invalid readings (outside 0-4V range) and other quality filters, retaining only reliable measurements."
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+
+# Before cleaning
+ax1.hist(redwood_merged['voltage'].dropna(), bins=50, alpha=0.7,
+        color='orange', edgecolor='darkorange')
+ax1.axvline(0, color='red', linestyle='--', linewidth=2, label='Valid range')
+ax1.axvline(4, color='red', linestyle='--', linewidth=2)
+ax1.axvline(2.4, color='green', linestyle=':', linewidth=1.5, alpha=0.7, label='Typical range')
+ax1.axvline(3.0, color='green', linestyle=':', linewidth=1.5, alpha=0.7)
+ax1.set_xlabel('Voltage (V)', fontsize=12, fontweight='bold')
+ax1.set_ylabel('Frequency', fontsize=12, fontweight='bold')
+ax1.set_title(f'Before Cleaning\nn = {len(redwood_merged):,}', fontsize=14, fontweight='bold')
+ax1.legend()
+ax1.grid(True, alpha=0.3)
+
+# After cleaning
+ax2.hist(redwood_all_df['voltage'].dropna(), bins=50, alpha=0.7,
+        color='green', edgecolor='darkgreen')
+ax2.axvline(0, color='red', linestyle='--', linewidth=2, label='Valid range')
+ax2.axvline(4, color='red', linestyle='--', linewidth=2)
+ax2.axvline(2.4, color='blue', linestyle=':', linewidth=1.5, alpha=0.7, label='Typical range')
+ax2.axvline(3.0, color='blue', linestyle=':', linewidth=1.5, alpha=0.7)
+ax2.set_xlabel('Voltage (V)', fontsize=12, fontweight='bold')
+ax2.set_ylabel('Frequency', fontsize=12, fontweight='bold')
+ax2.set_title(f'After Cleaning\nn = {len(redwood_all_df):,}', fontsize=14, fontweight='bold')
+ax2.legend()
+ax2.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+```
+
+## Data Quality Issues and Cleaning Procedures
+
+Through systematic examination, we identified several critical data quality issues:
+
+### 1. Voltage Scale Inconsistency
+
+The network and log datasets recorded voltage in fundamentally different scales. The network dataset used raw ADC (analog-to-digital converter) values ranging from 0-1023, while the log dataset stored actual voltages in the 0-3.3V range. Simply merging these datasets would create artificial patterns and invalidate any voltage-based quality filtering.
+
+Rather than applying a theoretical conversion formula (which assumes knowledge of the exact reference voltage and ADC configuration),I used an empirical calibration approach. We matched the statistical distributions of the two datasets by finding the linear transformation (scale factor and offset) that aligns their percentiles. 
+ V_corrected = 0.016291 × V_net + -0.926464
+
+### 2. Invalid Voltage Readings
+
+We filtered data to retain only readings with voltage between 0-4V. While the typical operating range for these sensors is 2.4-3.0V (shown as dotted green/blue lines in the plots). Values outside 0-4V represent sensor malfunctions or data corruption.
+
+### 3. Impossible Physical Values
+
+We removed readings that violated physical constraints:
+- Humidity outside 0-100% (relative humidity cannot exceed saturation or be negative)
+- Temperature outside -20°C to 50°C (far outside the range possible in coastal California)
+- Negative PAR values (light intensity cannot be negative)
+
+### 4. Duplicate Measurements
+
+After merging the network and log datasets, some measurements appeared twice. We removed duplicates by identifying measurements with matching sensor ID, timestamp, and measurement period, keeping only the first occurrence. 
+
+
+
 # Exploratory Data Analysis
+```{python}
+#| label: prepare-analysis
+# Prepare analysis-ready dataset with canopy layers
+analysis_data = prepare_analysis_data(redwood_all_df, motes_df)
+
+# Display layer statistics
+print("=== OBSERVATIONS BY CANOPY LAYER ===")
+layer_counts = analysis_data.groupby('canopy_layer').size()
+for layer in ['Lower', 'Middle', 'Upper']:
+    print(f"{layer} canopy: {layer_counts[layer]:,} observations")
+
+# Temperature-humidity statistics by layer
+print("\n=== TEMPERATURE-HUMIDITY STATISTICS BY LAYER ===")
+layer_stats = analysis_data.groupby('canopy_layer').agg({
+    'humid_temp': ['mean', 'std'],
+    'humidity': ['mean', 'std']
+}).round(2)
+print(layer_stats)
+```
+
+## Finding 1: Temperature-Humidity Relationships Differ by Canopy Layer
+```{python}
+#| label: finding1-hexbin
+#| fig-cap: "Temperature-humidity relationships across three canopy layers. Each panel shows hexbin density plots where darker red colors indicate higher density of observations. The upper canopy shows a clear inverse relationship between temperature and humidity, while the lower canopy shows a more diffuse pattern with points scattered throughout the parameter space."
+
+def plot_temp_humidity_by_layer(data, figsize=(16, 5)):
+    """
+    Plot temperature vs humidity relationship for different canopy layers
+    """
+    fig, axes = plt.subplots(1, 3, figsize=figsize)
+    
+    colors = {'Lower': 'forestgreen', 'Middle': 'orange', 'Upper': 'crimson'}
+    
+    for i, layer in enumerate(['Lower', 'Middle', 'Upper']):
+        subset = data[data['canopy_layer'] == layer]
+        
+        axes[i].hexbin(subset['humid_temp'], subset['humidity'], 
+                       gridsize=30, cmap='YlOrRd', mincnt=1, alpha=0.8)
+        axes[i].set_xlabel('Temperature (°C)', fontsize=12, fontweight='bold')
+        axes[i].set_ylabel('Relative Humidity (%)', fontsize=12, fontweight='bold')
+        axes[i].set_title(f'{layer} Canopy', fontsize=14, fontweight='bold', 
+                         color=colors[layer])
+        axes[i].grid(True, alpha=0.3)
+        n = len(subset)
+        axes[i].text(0.05, 0.95, f'n = {n:,}', transform=axes[i].transAxes,
+                    fontsize=10, verticalalignment='top',
+                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    
+    plt.tight_layout()
+    return fig
+
+fig = plot_temp_humidity_by_layer(analysis_data)
+plt.show()
+```
+
+Across all layers, there is a clear negative relationship: as temperature increases, relative humidity decreases. The densest regions (darkest hexes) occur at high humidity and lower temperatures, especially in the Lower Canopy, indicating more frequent cool, moist conditions near the ground. Upper canopy measurements are generally warmer and slightly drier, highlighting consistent vertical microclimatic gradients in temperature and humidity through the forest canopy.
+
+## Finding 2: Temperature Distributions Are Similar Across Canopy Layers
+```{python}
+#| label: finding2-boxplots
+def plot_temperature_by_layer(data, figsize=(8, 6)):
+    """ Box plot showing temperature distribution across canopy layers
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+    layers = ['Lower', 'Middle', 'Upper']
+    data_to_plot = [data[data['canopy_layer'] == layer]['humid_temp'].dropna() 
+                    for layer in layers]
+    
+    bp = ax.boxplot(data_to_plot, labels=layers, patch_artist=True,
+                    boxprops=dict(facecolor='lightcoral', alpha=0.7),
+                    medianprops=dict(color='darkred', linewidth=2),
+                    showmeans=True, 
+                    meanprops=dict(marker='D', markerfacecolor='blue', 
+                                  markeredgecolor='blue', markersize=8))
+    
+    ax.set_xlabel('Canopy Layer', fontsize=13, fontweight='bold')
+    ax.set_ylabel('Temperature (°C)', fontsize=13, fontweight='bold')
+    ax.set_title('Temperature Distribution by Canopy Layer', 
+                 fontsize=15, fontweight='bold')
+    ax.grid(True, alpha=0.3, axis='y')
+    for i, layer in enumerate(layers):
+        n = len(data_to_plot[i])
+        ax.text(i+1, ax.get_ylim()[0] + 0.5, f'n={n:,}', 
+               ha='center', va='bottom', fontsize=9)
+    
+    plt.tight_layout()
+    return fig
+
+fig = plot_temperature_by_layer(analysis_data)
+plt.show()
+```
+
+The box plots reveal a surprising result: despite being separated by up to 55 meters vertically and experiencing vastly different light environments, all three canopy layers show similar temperature distributions. The median temperatures (red lines) are approximately 15°C for all three layers, and the interquartile ranges (boxes) overlap substantially.
+
+
+
+## Finding 3: Height Influences Temperature-Humidity Coupling Strength
+```{python}
+
+def plot_temp_vs_humidity_by_height(data, figsize=(10, 8)):
+    """
+    Scatter plot of temperature vs humidity colored by height
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    
+    #sample = data.sample(n=min(5000, len(data)), random_state=42)
+    sample= data
+    scatter = ax.scatter(sample['humid_temp'], sample['humidity'], 
+                        c=sample['Height'], cmap='viridis', 
+                        alpha=0.6, s=20, edgecolors='none')
+    
+    ax.set_xlabel('Temperature (°C)', fontsize=13, fontweight='bold')
+    ax.set_ylabel('Relative Humidity (%)', fontsize=13, fontweight='bold')
+    ax.set_title('Temperature-Humidity Relationship by Canopy Height', 
+                 fontsize=15, fontweight='bold')
+    ax.grid(True, alpha=0.3)
+    
+    # Colorbar
+    cbar = plt.colorbar(scatter, ax=ax)
+    cbar.set_label('Height Above Ground (m)', fontsize=12, fontweight='bold')
+    
+    plt.tight_layout()
+    return fig
+
+fig = plot_temp_vs_humidity_by_height(analysis_data)
+plt.show()
+```
+
+Relative humidity decreases when temperature increases, showing a clear inverse relationship between these two variables. Point color indicates height above ground, revealing that measurements from higher canopy layers tend to be slightly warmer and drier, while lower layers are cooler and more humid. This pattern highlights a vertical microclimatic gradient within the forest canopy, with lower layers experiencing more moisture and variability, and upper layers being drier and thermally more stable.
+
+
+## Finding 4: Humidity Relationship with Height
+```{python}
+#| label: finding4-humidity-height
+#| fig-cap: "Relationship between canopy height and relative humidity. Each point represents a single measurement, colored by temperature. The clear downward trend shows that humidity systematically decreases with increasing height above ground."
+
+def plot_humidity_vs_height(data, figsize=(8, 7)):
+    """
+    Simple scatter plot of humidity vs height
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+    sample = data.sample(n=min(3000, len(data)), random_state=42)
+    
+    scatter = ax.scatter(sample['humidity'], sample['Height'], 
+                        c=sample['humid_temp'], cmap='coolwarm', 
+                        alpha=0.5, s=15, edgecolors='none')
+    
+    ax.set_xlabel('Relative Humidity (%)', fontsize=13, fontweight='bold')
+    ax.set_ylabel('Height Above Ground (m)', fontsize=13, fontweight='bold')
+    ax.set_title('Humidity Decreases with Canopy Height', 
+                 fontsize=15, fontweight='bold')
+    ax.grid(True, alpha=0.3)
+    cbar = plt.colorbar(scatter, ax=ax)
+    cbar.set_label('Temperature (°C)', fontsize=12, fontweight='bold')
+    
+    plt.tight_layout()
+    return fig
+
+fig = plot_humidity_vs_height(analysis_data)
+plt.show()
+```
+As canopy height increases, relative humidity tends to decrease and temperature tends to cool, reflecting microclimatic changes through the forest vertical structure. Lower layers are warmer and more variable in moisture, while upper layers are cooler and slightly drier.
+
+## Finding 5: Humidity Distributions by Canopy Layer
+
+
+
+```{python}
+def plot_humidity_violins(data, figsize=(8, 6)):
+    """
+    Violin plot of humidity by canancy layer
+    """
+    import matplotlib.pyplot as plt  # Move import to TOP
+    
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    layers = ['Lower', 'Middle', 'Upper']
+    data_to_plot = [data[data['canopy_layer'] == layer]['humidity'].dropna().values 
+                    for layer in layers]
+    colors = ['forestgreen', 'orange', 'pink']
+    
+    parts = ax.violinplot(data_to_plot, positions=[1, 2, 3], 
+                          showmeans=True, showmedians=True, widths=0.7)
+    
+    for i, pc in enumerate(parts['bodies']):
+        pc.set_facecolor(colors[i])
+        pc.set_alpha(0.5)
+    
+    # Color the lines
+    for partname in ('cbars', 'cmins', 'cmaxes', 'cmedians', 'cmeans'):
+        if partname in parts:
+            parts[partname].set_edgecolor('black')
+            parts[partname].set_linewidth(1.5)
+    
+    ax.set_xticks([1, 2, 3])
+    ax.set_xticklabels(layers)
+    ax.set_xlabel('Canopy Layer', fontsize=13, fontweight='bold')
+    ax.set_ylabel('Relative Humidity (%)', fontsize=13, fontweight='bold')
+    ax.set_title('Humidity Distribution by Canopy Layer', 
+                 fontsize=15, fontweight='bold')
+    ax.grid(True, alpha=0.3, axis='y')
+    
+    plt.tight_layout()
+    return fig
+
+fig = plot_humidity_violins(analysis_data)
+plt.show()
+```
+Median humidity values are similar across layers, approximately 55–60%, indicating that typical humidity is consistent throughout the canopy. However, the distribution shapes reveal layer-specific variability. The Lower and Middle layers exhibit wider spreads at low humidity values, suggesting that these layers experience more frequent dry conditions. In contrast, the Upper layer shows a slightly narrower distribution around the median, with fewer extremely low values, though it still reaches high humidity levels. Overall, while central tendencies are similar, the lower and middle canopy layers are subject to greater fluctuations in relative humidity, likely reflecting microclimatic effects such as differential sunlight exposure and airflow.
+
+
+
+# Discussion
+
+This analysis demonstrates that temperature-humidity relationships in redwood canopies vary systematically with vertical position, revealing fundamentally different environmental processes operating at different heights. The three key findings tell a coherent story about canopy microclimate structure:
+
+The strength of temperature-humidity coupling increases with height. Upper canopy sensors show tight inverse relationships characteristic of direct atmospheric forcing, while lower canopy sensors show weak, diffuse relationships indicating buffering and decoupling from atmospheric conditions. This gradient in coupling strength reflects the transition from exposed, atmosphere-dominated conditions at the top to buffered, tree-physiology-influenced conditions at the bottom.
+
+Second, despite dramatic differences in light exposure and humidity levels, temperature remains relatively uniform across canopy heights. This thermal uniformity, combined with varying humidity, creates distinct microenvironments: the upper canopy is warm and dry while the lower canopy is warm and humid. The combination of similar temperatures but different humidities means that vapor pressure deficit (the driving force for transpiration) varies substantially with height even though temperature alone would suggest similar conditions.
+
+
+From a tree physiology perspective, these findings have important implications. The upper canopy operates under high evaporative demand (low humidity) despite moderate temperatures, requiring substantial water transport from roots. The tight temperature-humidity coupling means that upper leaves experience coordinated stress from both factors. The lower canopy benefits from high humidity reducing water stress, and the weak temperature-humidity coupling means that fog events can raise humidity independent of temperature changes, providing additional moisture without requiring temperature drops.
+
+These patterns also highlight the limitations of using temperature alone as a microclimate indicator. Two positions with identical temperatures (as seen in Finding 2) can have dramatically different humidity levels and different environmental forcing mechanisms (as seen in Findings 1 and 3). A complete understanding of canopy microclimate requires examining multiple variables and their relationships, not just their individual distributions.
+
+Future work could examine how these temperature-humidity relationships vary diurnally (day versus night), seasonally, or during specific weather events like fog intrusions or heat waves. Comparing multiple trees or forest stands would test whether these patterns are general features of tall forest canopies or specific to this particular redwood tree and its coastal location.

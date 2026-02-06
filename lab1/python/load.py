@@ -55,7 +55,7 @@ def load_redwood_data(path='data', source='all'):
     '''
     assert source in ['all', 'log', 'net'], 'source must be one of "all", "log", or "net"'
     redwood_data = pd.read_csv(oj(path, f'sonoma-data-{source}.csv'))
-    redwood_data.columns = redwood_data.columns.str.strip()  # Remove any leading/trailing spaces
+    redwood_data.columns = redwood_data.columns.str.strip()
     return redwood_data
 
 
@@ -73,5 +73,11 @@ def load_mote_location_data(path='data'):
     df : pd.DataFrame
         Dataframe containing the mote location data
     '''
-    # TODO: LOAD MOTE LOCATION DATA
-    return
+    mote_data = pd.read_csv(
+        oj(path, 'mote-location-data.txt'), 
+        sep=r'\s+',
+        engine='python',
+        dtype={'ID': int, 'Height': float, 'Dist': float}  # Specify types on load
+    )
+    
+    return mote_data
