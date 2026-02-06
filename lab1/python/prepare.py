@@ -5,21 +5,7 @@ import pandas as pd
 import numpy as np
 
 def merge_with_locations(redwood_df, motes_df):
-    """
-    Merge redwood sensor data with location data
     
-    Parameters
-    ----------
-    redwood_df : pd.DataFrame
-        Cleaned redwood sensor data
-    motes_df : pd.DataFrame
-        Cleaned mote location data
-    
-    Returns
-    -------
-    pd.DataFrame
-        Merged dataframe with location information
-    """
     # Ensure ID column is same type as nodeid for merging
     motes_df = motes_df.copy()
     motes_df['ID'] = motes_df['ID'].astype(int)
