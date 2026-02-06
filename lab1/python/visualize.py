@@ -8,21 +8,6 @@ import seaborn as sns
 
 
 def plot_vertical_gradients(data, figsize=(16, 6)):
-    """
-    Create three-panel plot showing temperature, humidity, and light gradients
-    
-    Parameters
-    ----------
-    data : pd.DataFrame
-        Analysis-ready dataframe
-    figsize : tuple
-        Figure size
-    
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The created figure
-    """
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=figsize)
     
     # Temperature gradient
@@ -70,21 +55,6 @@ def plot_vertical_gradients(data, figsize=(16, 6)):
 
 
 def plot_temp_humidity_by_layer(data, figsize=(16, 5)):
-    """
-    Plot temperature vs humidity relationship for different canopy layers
-    
-    Parameters
-    ----------
-    data : pd.DataFrame
-        Analysis-ready dataframe with canopy_layer column
-    figsize : tuple
-        Figure size
-    
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The created figure
-    """
     fig, axes = plt.subplots(1, 3, figsize=figsize)
     
     colors = {'Lower': 'forestgreen', 'Middle': 'orange', 'Upper': 'crimson'}
@@ -111,9 +81,7 @@ def plot_temp_humidity_by_layer(data, figsize=(16, 5)):
 
 
 def plot_data_cleaning_summary(original_data, cleaned_data, figsize=(14, 5)):
-    """
-    Visualize the impact of data cleaning
-    """
+    
     fig, axes = plt.subplots(1, 2, figsize=figsize)
     
     # Fix voltage in original data for plotting (same logic as cleaning)
