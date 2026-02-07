@@ -1,14 +1,20 @@
 name: dsip_lab1
 channels:
+  - conda-forge
   - defaults
 dependencies:
   - python=3.14.2
   - pandas
-  - jupyterlab
-  - ipykernel
-  - statsmodels
   - numpy
-  - conda-lock
-  - seaborn
   - matplotlib
+  - seaborn
+  - jupyterlab
+  - jupyter
+  - ipykernel
+  - nbformat
+  - nbclient
+  - statsmodels
+  - scipy
+  - openpyxl
+  - conda-lock
 prefix: /opt/miniconda3/envs/dsip_lab1
