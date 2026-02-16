@@ -84,7 +84,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
    
   <ul>
   <li><a href="#introduction" id="toc-introduction" class="nav-link active" data-scroll-target="#introduction">Introduction</a></li>
-  <li><a href="#data-overview-and-collection" id="toc-data-overview-and-collection" class="nav-link" data-scroll-target="#data-overview-and-collection">Data Overview and Collection</a></li>
+  <li><a href="#data-overview-and-collection" id="toc-data-overview-and-collection" class="nav-link" data-scroll-target="#data-overview-and-collection">Data Overview and Collection</a>
+  <ul class="collapse">
+  <li><a href="#data-collection-methodology" id="toc-data-collection-methodology" class="nav-link" data-scroll-target="#data-collection-methodology">Data Collection Methodology</a></li>
+  <li><a href="#variables-of-interest-and-their-relevance" id="toc-variables-of-interest-and-their-relevance" class="nav-link" data-scroll-target="#variables-of-interest-and-their-relevance">Variables of Interest and Their Relevance</a></li>
+  <li><a href="#advantages-and-limitations-of-the-dataset" id="toc-advantages-and-limitations-of-the-dataset" class="nav-link" data-scroll-target="#advantages-and-limitations-of-the-dataset">Advantages and Limitations of the Dataset</a></li>
+  </ul></li>
   <li><a href="#data-cleaning" id="toc-data-cleaning" class="nav-link" data-scroll-target="#data-cleaning">Data Cleaning</a>
   <ul class="collapse">
   <li><a href="#step-1-load-datasets-and-examine-voltage-distributions" id="toc-step-1-load-datasets-and-examine-voltage-distributions" class="nav-link" data-scroll-target="#step-1-load-datasets-and-examine-voltage-distributions">Step 1: Load Datasets and Examine Voltage Distributions</a></li>
@@ -190,6 +195,34 @@ Number of unique sensors (net): 31
 Number of unique sensors (log): 72</code></pre>
 </div>
 </div>
+<section id="data-collection-methodology" class="level2">
+<h2 class="anchored" data-anchor-id="data-collection-methodology">Data Collection Methodology</h2>
+<p>The data were collected using a wireless sensor network deployed in a single coastal redwood tree in Sonoma County, California, from April 27 to June 10, 2004 (44 days). Thirty-three sensor nodes were placed at heights ranging from 15 to 70 meters above ground level on the western side of the tree, positioned 0.1-1.0 meters from the trunk. Each node consisted of a Mica2 mote equipped with Sensirion SHT11 sensors for temperature and humidity measurement (±0.5°C and ±3.5% accuracy, respectively) and Hamamatsu S1087 photodiodes for measuring photosynthetically active radiation. Measurements were taken every 5 minutes throughout the study period, providing high temporal resolution of microclimate dynamics.</p>
+<p>The sensor network employed two redundant data collection mechanisms to maximize data reliability:</p>
+<ol type="1">
+<li><strong>Network transmission</strong>: Sensors transmitted readings wirelessly through a multi-hop network to a base station at ground level</li>
+<li><strong>Local logging</strong>: Each sensor stored readings on a 512KB memory chip as backup</li>
+</ol>
+<p>Due to wireless network failures caused by interference, battery depletion in relay nodes, and gateway outages, the network transmission achieved only approximately 40% data yield. The local logs provided higher reliability but filled their memory capacity after approximately 3 weeks, after which they stopped recording. We merged both data sources to maximize coverage, removing duplicates by matching sensor ID, timestamp, and measurement period. After deduplication, we achieved approximately 49% coverage of the theoretical maximum number of measurements.</p>
+<p>A critical data quality issue was voltage scale inconsistency: the network dataset recorded voltage as raw ADC (analog-to-digital converter) values ranging from 0-1023, while the log dataset stored actual voltages in the 0-3.3V range. Rather than applying a theoretical conversion formula, we used an empirical approach by matching the distribution percentiles between the two datasets to derive a linear transformation (scale factor and offset) that aligned the voltage measurements. This data-driven calibration accounts for hardware-specific differences in ADC configuration and reference voltages.</p>
+</section>
+<section id="variables-of-interest-and-their-relevance" class="level2">
+<h2 class="anchored" data-anchor-id="variables-of-interest-and-their-relevance">Variables of Interest and Their Relevance</h2>
+<p>For this analysis examining temperature-humidity relationships across canopy heights, we focus on five key variables:</p>
+<p><strong>Temperature (humid_temp, °C)</strong>: Air temperature measured by the SHT11 sensor with ±0.5°C accuracy, ranging from 6.6°C to 32.6°C during the study period. Temperature is critical for understanding thermal stress on tree physiology and evaporative demand. Our research question specifically examines how temperature couples with humidity across different canopy positions, with the hypothesis that coupling strength varies with height due to differences in atmospheric exposure versus canopy buffering.</p>
+<p><strong>Relative Humidity (humidity, %)</strong>: Measured by the same SHT11 sensor with ±3.5% accuracy, ranging from 16.4% to 100%. Humidity affects transpiration rates, indicates fog presence, and is essential for understanding water stress in the canopy. This variable is central to our research question as we examine how the temperature-humidity relationship differs between upper canopy (exposed, atmosphere-dominated) and lower canopy (buffered, physiology-influenced) positions.</p>
+<p><strong>Incident PAR (hamatop, µmol/m²/s)</strong>: Photosynthetically active radiation measured by an upward-facing Hamamatsu S1087 photodiode, ranging from 0 (nighttime) to over 2,150 µmol/m²/s (full midday sun at canopy top). While not the primary focus of our analysis, PAR is important because it drives both temperature patterns (through radiative heating) and humidity patterns (through increased evaporative demand), helping explain the mechanisms behind temperature-humidity coupling.</p>
+<p><strong>Height (meters)</strong>: The vertical position of each sensor above ground level, distributed from 15m to 70m with approximately 2-meter spacing. Height is our primary spatial dimension for examining how environmental processes differ vertically within the canopy. We classify sensors into three layers (Lower: &lt;35m, Middle: 35-55m, Upper: &gt;55m) to test whether temperature-humidity relationships transition systematically from buffered conditions near the ground to atmosphere-dominated conditions at the canopy top.</p>
+<p><strong>Voltage (volts)</strong>: Battery voltage, with optimal sensor operation in the 2.4-3.0V range. While not a biological or environmental variable, voltage is a critical quality indicator because temperature and humidity sensors become unreliable when battery voltage drops below approximately 2.4V. We use voltage to filter invalid measurements and identify periods when sensor accuracy may be compromised due to insufficient power supply.</p>
+</section>
+<section id="advantages-and-limitations-of-the-dataset" class="level2">
+<h2 class="anchored" data-anchor-id="advantages-and-limitations-of-the-dataset">Advantages and Limitations of the Dataset</h2>
+<p>This dataset is uniquely suited to studying temperature-humidity relationships across canopy heights due to several advantages in the context of our research question:</p>
+<p><strong>High spatial density</strong>: The approximately 2-meter vertical spacing across 55 meters of vertical extent provides fine-scale resolution to detect microclimate gradients and identify the transition zone where temperature-humidity coupling shifts from atmosphere-dominated (upper canopy) to canopy-buffered (lower canopy) patterns. Most forest microclimate studies use much coarser spacing (5-10m), which would miss important transition dynamics.</p>
+<p><strong>High temporal resolution</strong>: Five-minute measurement intervals capture diurnal cycles and transient events such as fog intrusions and rapid solar heating that drive temperature-humidity dynamics. This temporal resolution is essential for understanding whether temperature and humidity are coupled in real-time (responding simultaneously to atmospheric forcing) or whether time lags and buffering processes decouple their relationship at certain canopy positions.</p>
+<p><strong>Single-sided deployment</strong>: Sensors were concentrated on the western side of the tree only. Temperature-humidity relationships may differ on the eastern exposure due to differences in solar heating timing (morning versus afternoon), potentially limiting the generalizability of our conclusions about coupling patterns to other aspects and tree structures.</p>
+<p><strong>Substantial missing data</strong>: The combination of network transmission failures (60% data loss), local logging capacity limits, and voltage-based quality filtering resulted in 51% missing data overall. This missing data may introduce temporal bias, as battery failures increased over time, meaning early study periods are better represented than later periods. Additionally, this could bias our conclusions if data loss was not random across canopy positions.</p>
+</section>
 </section>
 <section id="data-cleaning" class="level1">
 <h1>Data Cleaning</h1>
@@ -234,7 +267,7 @@ These need to be aligned before merging!</code></pre>
 </section>
 <section id="step-2-empirical-voltage-calibration" class="level2">
 <h2 class="anchored" data-anchor-id="step-2-empirical-voltage-calibration">Step 2: Empirical Voltage Calibration</h2>
-<div id="dd5d27c8" class="cell" data-execution_count="4">
+<div id="cad4221d" class="cell" data-execution_count="4">
 <details class="code-fold">
 <summary>Show Code</summary>
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> python.clean <span class="im">import</span> find_empirical_voltage_conversion</span>
@@ -342,7 +375,7 @@ Merged voltage statistics:
 </section>
 <section id="step-4-clean-the-merged-dataset" class="level2">
 <h2 class="anchored" data-anchor-id="step-4-clean-the-merged-dataset">Step 4: Clean the Merged Dataset</h2>
-<div id="abbda85e" class="cell" data-execution_count="7">
+<div id="e4384e7e" class="cell" data-execution_count="7">
 <details class="code-fold">
 <summary>Show Code</summary>
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> python.clean <span class="im">import</span> clean_redwood_data, clean_dates_data, clean_mote_location_data</span>
@@ -574,7 +607,7 @@ Upper             14.73  4.58    64.25  21.79</code></pre>
 </section>
 <section id="finding-3-height-influences-temperature-humidity-coupling-strength" class="level2">
 <h2 class="anchored" data-anchor-id="finding-3-height-influences-temperature-humidity-coupling-strength">Finding 3: Height Influences Temperature-Humidity Coupling Strength</h2>
-<div id="11c839f0" class="cell" data-execution_count="12">
+<div id="7ea6af08" class="cell" data-execution_count="12">
 <details class="code-fold">
 <summary>Show Code</summary>
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> plot_temp_vs_humidity_by_height(data, figsize<span class="op">=</span>(<span class="dv">10</span>, <span class="dv">8</span>)):</span>
@@ -659,7 +692,7 @@ Upper             14.73  4.58    64.25  21.79</code></pre>
 </section>
 <section id="finding-5-humidity-distributions-by-canopy-layer" class="level2">
 <h2 class="anchored" data-anchor-id="finding-5-humidity-distributions-by-canopy-layer">Finding 5: Humidity Distributions by Canopy Layer</h2>
-<div id="8b879272" class="cell" data-execution_count="14">
+<div id="91765d44" class="cell" data-execution_count="14">
 <details class="code-fold">
 <summary>Show Code</summary>
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> plot_humidity_violins(data, figsize<span class="op">=</span>(<span class="dv">8</span>, <span class="dv">6</span>)):</span>
@@ -1223,420 +1256,467 @@ Upper             14.73  4.58    64.25  21.79</code></pre>
 <span id="cb22-45"><a href="#cb22-45" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb22-46"><a href="#cb22-46" aria-hidden="true" tabindex="-1"></a>This analysis uses high-resolution sensor network data from Tolle et al. (2005) collected over 44 days in a single redwood tree to examine how temperature-humidity relationships differ between lower, middle, and upper canopy positions.</span>
 <span id="cb22-47"><a href="#cb22-47" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-48"><a href="#cb22-48" aria-hidden="true" tabindex="-1"></a><span class="fu"># Data Overview and Collection</span></span>
-<span id="cb22-51"><a href="#cb22-51" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
-<span id="cb22-52"><a href="#cb22-52" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: load-data</span></span>
-<span id="cb22-53"><a href="#cb22-53" aria-hidden="true" tabindex="-1"></a><span class="co"># Load individual datasets</span></span>
-<span id="cb22-54"><a href="#cb22-54" aria-hidden="true" tabindex="-1"></a>dates_orig <span class="op">=</span> load_dates_data(DATA_PATH)</span>
-<span id="cb22-55"><a href="#cb22-55" aria-hidden="true" tabindex="-1"></a>motes_orig <span class="op">=</span> load_mote_location_data(DATA_PATH)</span>
-<span id="cb22-56"><a href="#cb22-56" aria-hidden="true" tabindex="-1"></a>redwood_net_orig <span class="op">=</span> load_redwood_data(DATA_PATH, source<span class="op">=</span><span class="st">"net"</span>)</span>
-<span id="cb22-57"><a href="#cb22-57" aria-hidden="true" tabindex="-1"></a>redwood_log_orig <span class="op">=</span> load_redwood_data(DATA_PATH, source<span class="op">=</span><span class="st">"log"</span>)</span>
-<span id="cb22-58"><a href="#cb22-58" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-59"><a href="#cb22-59" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"=== ORIGINAL DATASETS ==="</span>)</span>
-<span id="cb22-60"><a href="#cb22-60" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Network dataset: </span><span class="sc">{</span><span class="bu">len</span>(redwood_net_orig)<span class="sc">:,}</span><span class="ss"> observations"</span>)</span>
-<span id="cb22-61"><a href="#cb22-61" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Log dataset: </span><span class="sc">{</span><span class="bu">len</span>(redwood_log_orig)<span class="sc">:,}</span><span class="ss"> observations"</span>)</span>
-<span id="cb22-62"><a href="#cb22-62" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Number of unique sensors (net): </span><span class="sc">{</span>redwood_net_orig[<span class="st">'nodeid'</span>]<span class="sc">.</span>nunique()<span class="sc">}</span><span class="ss">"</span>)</span>
-<span id="cb22-63"><a href="#cb22-63" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Number of unique sensors (log): </span><span class="sc">{</span>redwood_log_orig[<span class="st">'nodeid'</span>]<span class="sc">.</span>nunique()<span class="sc">}</span><span class="ss">"</span>)</span>
-<span id="cb22-64"><a href="#cb22-64" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
-<span id="cb22-65"><a href="#cb22-65" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-66"><a href="#cb22-66" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-67"><a href="#cb22-67" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-48"><a href="#cb22-48" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-49"><a href="#cb22-49" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-50"><a href="#cb22-50" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-51"><a href="#cb22-51" aria-hidden="true" tabindex="-1"></a><span class="fu"># Data Overview and Collection</span></span>
+<span id="cb22-54"><a href="#cb22-54" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
+<span id="cb22-55"><a href="#cb22-55" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: load-data</span></span>
+<span id="cb22-56"><a href="#cb22-56" aria-hidden="true" tabindex="-1"></a><span class="co"># Load individual datasets</span></span>
+<span id="cb22-57"><a href="#cb22-57" aria-hidden="true" tabindex="-1"></a>dates_orig <span class="op">=</span> load_dates_data(DATA_PATH)</span>
+<span id="cb22-58"><a href="#cb22-58" aria-hidden="true" tabindex="-1"></a>motes_orig <span class="op">=</span> load_mote_location_data(DATA_PATH)</span>
+<span id="cb22-59"><a href="#cb22-59" aria-hidden="true" tabindex="-1"></a>redwood_net_orig <span class="op">=</span> load_redwood_data(DATA_PATH, source<span class="op">=</span><span class="st">"net"</span>)</span>
+<span id="cb22-60"><a href="#cb22-60" aria-hidden="true" tabindex="-1"></a>redwood_log_orig <span class="op">=</span> load_redwood_data(DATA_PATH, source<span class="op">=</span><span class="st">"log"</span>)</span>
+<span id="cb22-61"><a href="#cb22-61" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-62"><a href="#cb22-62" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"=== ORIGINAL DATASETS ==="</span>)</span>
+<span id="cb22-63"><a href="#cb22-63" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Network dataset: </span><span class="sc">{</span><span class="bu">len</span>(redwood_net_orig)<span class="sc">:,}</span><span class="ss"> observations"</span>)</span>
+<span id="cb22-64"><a href="#cb22-64" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Log dataset: </span><span class="sc">{</span><span class="bu">len</span>(redwood_log_orig)<span class="sc">:,}</span><span class="ss"> observations"</span>)</span>
+<span id="cb22-65"><a href="#cb22-65" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Number of unique sensors (net): </span><span class="sc">{</span>redwood_net_orig[<span class="st">'nodeid'</span>]<span class="sc">.</span>nunique()<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb22-66"><a href="#cb22-66" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Number of unique sensors (log): </span><span class="sc">{</span>redwood_log_orig[<span class="st">'nodeid'</span>]<span class="sc">.</span>nunique()<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb22-67"><a href="#cb22-67" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
 <span id="cb22-68"><a href="#cb22-68" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-69"><a href="#cb22-69" aria-hidden="true" tabindex="-1"></a><span class="fu"># Data Cleaning</span></span>
+<span id="cb22-69"><a href="#cb22-69" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb22-70"><a href="#cb22-70" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-71"><a href="#cb22-71" aria-hidden="true" tabindex="-1"></a><span class="fu">## Step 1: Load Datasets and Examine Voltage Distributions</span></span>
-<span id="cb22-74"><a href="#cb22-74" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
-<span id="cb22-75"><a href="#cb22-75" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: load-datasets</span></span>
-<span id="cb22-76"><a href="#cb22-76" aria-hidden="true" tabindex="-1"></a><span class="co"># Load net and log datasets separately</span></span>
-<span id="cb22-77"><a href="#cb22-77" aria-hidden="true" tabindex="-1"></a>redwood_net_orig <span class="op">=</span> load_redwood_data(DATA_PATH, source<span class="op">=</span><span class="st">"net"</span>)</span>
-<span id="cb22-78"><a href="#cb22-78" aria-hidden="true" tabindex="-1"></a>redwood_log_orig <span class="op">=</span> load_redwood_data(DATA_PATH, source<span class="op">=</span><span class="st">"log"</span>)</span>
-<span id="cb22-79"><a href="#cb22-79" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-80"><a href="#cb22-80" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"=== ORIGINAL DATASETS ==="</span>)</span>
-<span id="cb22-81"><a href="#cb22-81" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Network dataset: </span><span class="sc">{</span><span class="bu">len</span>(redwood_net_orig)<span class="sc">:,}</span><span class="ss"> observations"</span>)</span>
-<span id="cb22-82"><a href="#cb22-82" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Log dataset: </span><span class="sc">{</span><span class="bu">len</span>(redwood_log_orig)<span class="sc">:,}</span><span class="ss"> observations"</span>)</span>
-<span id="cb22-83"><a href="#cb22-83" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-84"><a href="#cb22-84" aria-hidden="true" tabindex="-1"></a>net_voltage_mean <span class="op">=</span> redwood_net_orig[<span class="st">'voltage'</span>].mean()</span>
-<span id="cb22-85"><a href="#cb22-85" aria-hidden="true" tabindex="-1"></a>log_voltage_mean <span class="op">=</span> redwood_log_orig[<span class="st">'voltage'</span>].mean()</span>
-<span id="cb22-86"><a href="#cb22-86" aria-hidden="true" tabindex="-1"></a>net_voltage_max <span class="op">=</span> redwood_net_orig[<span class="st">'voltage'</span>].<span class="bu">max</span>()</span>
-<span id="cb22-87"><a href="#cb22-87" aria-hidden="true" tabindex="-1"></a>log_voltage_max <span class="op">=</span> redwood_log_orig[<span class="st">'voltage'</span>].<span class="bu">max</span>()</span>
+<span id="cb22-71"><a href="#cb22-71" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-72"><a href="#cb22-72" aria-hidden="true" tabindex="-1"></a><span class="fu">## Data Collection Methodology</span></span>
+<span id="cb22-73"><a href="#cb22-73" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-74"><a href="#cb22-74" aria-hidden="true" tabindex="-1"></a>The data were collected using a wireless sensor network deployed in a single coastal redwood tree in Sonoma County, California, from April 27 to June 10, 2004 (44 days). Thirty-three sensor nodes were placed at heights ranging from 15 to 70 meters above ground level on the western side of the tree, positioned 0.1-1.0 meters from the trunk. Each node consisted of a Mica2 mote equipped with Sensirion SHT11 sensors for temperature and humidity measurement (±0.5°C and ±3.5% accuracy, respectively) and Hamamatsu S1087 photodiodes for measuring photosynthetically active radiation. Measurements were taken every 5 minutes throughout the study period, providing high temporal resolution of microclimate dynamics.</span>
+<span id="cb22-75"><a href="#cb22-75" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-76"><a href="#cb22-76" aria-hidden="true" tabindex="-1"></a>The sensor network employed two redundant data collection mechanisms to maximize data reliability:</span>
+<span id="cb22-77"><a href="#cb22-77" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-78"><a href="#cb22-78" aria-hidden="true" tabindex="-1"></a><span class="ss">1. </span>**Network transmission**: Sensors transmitted readings wirelessly through a multi-hop network to a base station at ground level</span>
+<span id="cb22-79"><a href="#cb22-79" aria-hidden="true" tabindex="-1"></a><span class="ss">2. </span>**Local logging**: Each sensor stored readings on a 512KB memory chip as backup</span>
+<span id="cb22-80"><a href="#cb22-80" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-81"><a href="#cb22-81" aria-hidden="true" tabindex="-1"></a>Due to wireless network failures caused by interference, battery depletion in relay nodes, and gateway outages, the network transmission achieved only approximately 40% data yield. The local logs provided higher reliability but filled their memory capacity after approximately 3 weeks, after which they stopped recording. We merged both data sources to maximize coverage, removing duplicates by matching sensor ID, timestamp, and measurement period. After deduplication, we achieved approximately 49% coverage of the theoretical maximum number of measurements.</span>
+<span id="cb22-82"><a href="#cb22-82" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-83"><a href="#cb22-83" aria-hidden="true" tabindex="-1"></a>A critical data quality issue was voltage scale inconsistency: the network dataset recorded voltage as raw ADC (analog-to-digital converter) values ranging from 0-1023, while the log dataset stored actual voltages in the 0-3.3V range. Rather than applying a theoretical conversion formula, we used an empirical approach by matching the distribution percentiles between the two datasets to derive a linear transformation (scale factor and offset) that aligned the voltage measurements. This data-driven calibration accounts for hardware-specific differences in ADC configuration and reference voltages.</span>
+<span id="cb22-84"><a href="#cb22-84" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-85"><a href="#cb22-85" aria-hidden="true" tabindex="-1"></a><span class="fu">## Variables of Interest and Their Relevance</span></span>
+<span id="cb22-86"><a href="#cb22-86" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-87"><a href="#cb22-87" aria-hidden="true" tabindex="-1"></a>For this analysis examining temperature-humidity relationships across canopy heights, we focus on five key variables:</span>
 <span id="cb22-88"><a href="#cb22-88" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-89"><a href="#cb22-89" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"</span><span class="ch">\n</span><span class="ss">Net voltage: mean=</span><span class="sc">{</span>net_voltage_mean<span class="sc">:.2f}</span><span class="ss">, max=</span><span class="sc">{</span>net_voltage_max<span class="sc">:.2f}</span><span class="ss">"</span>)</span>
-<span id="cb22-90"><a href="#cb22-90" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Log voltage: mean=</span><span class="sc">{</span>log_voltage_mean<span class="sc">:.2f}</span><span class="ss">, max=</span><span class="sc">{</span>log_voltage_max<span class="sc">:.2f}</span><span class="ss">"</span>)</span>
-<span id="cb22-91"><a href="#cb22-91" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-92"><a href="#cb22-92" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> net_voltage_max <span class="op">&gt;</span> <span class="dv">100</span> <span class="kw">and</span> log_voltage_max <span class="op">&lt;</span> <span class="dv">10</span>:</span>
-<span id="cb22-93"><a href="#cb22-93" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"Net dataset: Raw ADC values (0-1023)"</span>)</span>
-<span id="cb22-94"><a href="#cb22-94" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"Log dataset: Actual voltages (0-3.3V)"</span>)</span>
-<span id="cb22-95"><a href="#cb22-95" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"These need to be aligned before merging!"</span>)</span>
-<span id="cb22-96"><a href="#cb22-96" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
-<span id="cb22-97"><a href="#cb22-97" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-98"><a href="#cb22-98" aria-hidden="true" tabindex="-1"></a><span class="fu">## Step 2: Empirical Voltage Calibration</span></span>
-<span id="cb22-101"><a href="#cb22-101" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
-<span id="cb22-102"><a href="#cb22-102" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> python.clean <span class="im">import</span> find_empirical_voltage_conversion</span>
-<span id="cb22-103"><a href="#cb22-103" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-104"><a href="#cb22-104" aria-hidden="true" tabindex="-1"></a><span class="co"># Finding empirical conversion by matching distributions</span></span>
-<span id="cb22-105"><a href="#cb22-105" aria-hidden="true" tabindex="-1"></a><span class="co">#it's a heuristic common approach</span></span>
-<span id="cb22-106"><a href="#cb22-106" aria-hidden="true" tabindex="-1"></a>conversion_factor, conversion_offset, calibration_fig <span class="op">=</span> find_empirical_voltage_conversion(</span>
-<span id="cb22-107"><a href="#cb22-107" aria-hidden="true" tabindex="-1"></a>    redwood_net_orig,</span>
-<span id="cb22-108"><a href="#cb22-108" aria-hidden="true" tabindex="-1"></a>    redwood_log_orig</span>
-<span id="cb22-109"><a href="#cb22-109" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb22-110"><a href="#cb22-110" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-111"><a href="#cb22-111" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"</span><span class="ch">\n</span><span class="ss"> EMPIRICAL CONVERSION FORMULA:"</span>)</span>
-<span id="cb22-112"><a href="#cb22-112" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"   V_corrected = </span><span class="sc">{</span>conversion_factor<span class="sc">:.6f}</span><span class="ss"> × V_net + </span><span class="sc">{</span>conversion_offset<span class="sc">:.6f}</span><span class="ss">"</span>)</span>
-<span id="cb22-113"><a href="#cb22-113" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
-<span id="cb22-116"><a href="#cb22-116" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
-<span id="cb22-117"><a href="#cb22-117" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: calibration-plot</span></span>
-<span id="cb22-118"><a href="#cb22-118" aria-hidden="true" tabindex="-1"></a><span class="co">#| fig-cap: "Empirical voltage calibration by matching distribution percentiles across log and net (My own idea). Top row: original distributions and percentile-based linear fit showing how to align them. Bottom row: distributions after conversion with overlay (left), valid range zoom (middle), and Q-Q plot confirming alignment (right)."</span></span>
-<span id="cb22-119"><a href="#cb22-119" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-120"><a href="#cb22-120" aria-hidden="true" tabindex="-1"></a>plt.figure(calibration_fig.number)</span>
-<span id="cb22-121"><a href="#cb22-121" aria-hidden="true" tabindex="-1"></a>plt.show()</span>
-<span id="cb22-122"><a href="#cb22-122" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
-<span id="cb22-123"><a href="#cb22-123" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-124"><a href="#cb22-124" aria-hidden="true" tabindex="-1"></a>Rather than relying on theoretical conversion formulas that may not reflect the actual hardware configuration, we use an empirical approach to align the voltage distributions. We match the 25th, 50th, and 75th percentiles between the Net and Log datasets to find a linear transformation (scale + offset) that makes the distributions align. This data-driven method accounts for any calibration differences, reference voltage variations, or systematic offsets between the two data collection systems.</span>
-<span id="cb22-125"><a href="#cb22-125" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-126"><a href="#cb22-126" aria-hidden="true" tabindex="-1"></a><span class="fu">## Step 3: Apply Conversion and Merge Datasets</span></span>
-<span id="cb22-129"><a href="#cb22-129" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
-<span id="cb22-130"><a href="#cb22-130" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: apply-conversion-merge</span></span>
-<span id="cb22-131"><a href="#cb22-131" aria-hidden="true" tabindex="-1"></a><span class="co"># Apply empirical conversion to net dataset</span></span>
-<span id="cb22-132"><a href="#cb22-132" aria-hidden="true" tabindex="-1"></a>redwood_net_converted <span class="op">=</span> redwood_net_orig.copy()</span>
-<span id="cb22-133"><a href="#cb22-133" aria-hidden="true" tabindex="-1"></a>redwood_net_converted[<span class="st">'voltage'</span>] <span class="op">=</span> (redwood_net_orig[<span class="st">'voltage'</span>] <span class="op">*</span> conversion_factor <span class="op">+</span> conversion_offset)</span>
-<span id="cb22-134"><a href="#cb22-134" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-135"><a href="#cb22-135" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"=== VOLTAGE AFTER EMPIRICAL CONVERSION ==="</span>)</span>
-<span id="cb22-136"><a href="#cb22-136" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Net converted: mean=</span><span class="sc">{</span>redwood_net_converted[<span class="st">'voltage'</span>]<span class="sc">.</span>mean()<span class="sc">:.2f}</span><span class="ss">V, range=[</span><span class="sc">{</span>redwood_net_converted[<span class="st">'voltage'</span>]<span class="sc">.</span><span class="bu">min</span>()<span class="sc">:.2f}</span><span class="ss">, </span><span class="sc">{</span>redwood_net_converted[<span class="st">'voltage'</span>]<span class="sc">.</span><span class="bu">max</span>()<span class="sc">:.2f}</span><span class="ss">]"</span>)</span>
-<span id="cb22-137"><a href="#cb22-137" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Log original:  mean=</span><span class="sc">{</span>redwood_log_orig[<span class="st">'voltage'</span>]<span class="sc">.</span>mean()<span class="sc">:.2f}</span><span class="ss">V, range=[</span><span class="sc">{</span>redwood_log_orig[<span class="st">'voltage'</span>]<span class="sc">.</span><span class="bu">min</span>()<span class="sc">:.2f}</span><span class="ss">, </span><span class="sc">{</span>redwood_log_orig[<span class="st">'voltage'</span>]<span class="sc">.</span><span class="bu">max</span>()<span class="sc">:.2f}</span><span class="ss">]"</span>)</span>
-<span id="cb22-138"><a href="#cb22-138" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Mean difference after conversion: </span><span class="sc">{</span><span class="bu">abs</span>(redwood_net_converted[<span class="st">'voltage'</span>].mean() <span class="op">-</span> redwood_log_orig[<span class="st">'voltage'</span>].mean())<span class="sc">:.3f}</span><span class="ss">V"</span>)</span>
-<span id="cb22-139"><a href="#cb22-139" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-140"><a href="#cb22-140" aria-hidden="true" tabindex="-1"></a>redwood_net_converted[<span class="st">'source'</span>] <span class="op">=</span> <span class="st">'net'</span></span>
-<span id="cb22-141"><a href="#cb22-141" aria-hidden="true" tabindex="-1"></a>redwood_log_orig[<span class="st">'source'</span>] <span class="op">=</span> <span class="st">'log'</span></span>
-<span id="cb22-142"><a href="#cb22-142" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-143"><a href="#cb22-143" aria-hidden="true" tabindex="-1"></a>redwood_merged <span class="op">=</span> pd.concat([redwood_net_converted, redwood_log_orig], ignore_index<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb22-144"><a href="#cb22-144" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Before removing duplicates: </span><span class="sc">{</span><span class="bu">len</span>(redwood_merged)<span class="sc">:,}</span><span class="ss">"</span>)</span>
-<span id="cb22-145"><a href="#cb22-145" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-146"><a href="#cb22-146" aria-hidden="true" tabindex="-1"></a><span class="co"># Remove duplicates (same sensor, same time, same measurement period)</span></span>
-<span id="cb22-147"><a href="#cb22-147" aria-hidden="true" tabindex="-1"></a>redwood_merged <span class="op">=</span> redwood_merged.drop_duplicates(</span>
-<span id="cb22-148"><a href="#cb22-148" aria-hidden="true" tabindex="-1"></a>    subset<span class="op">=</span>[<span class="st">'nodeid'</span>, <span class="st">'result_time'</span>, <span class="st">'epoch'</span>],</span>
-<span id="cb22-149"><a href="#cb22-149" aria-hidden="true" tabindex="-1"></a>    keep<span class="op">=</span><span class="st">'first'</span></span>
-<span id="cb22-150"><a href="#cb22-150" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb22-151"><a href="#cb22-151" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-152"><a href="#cb22-152" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"After removing duplicates: </span><span class="sc">{</span><span class="bu">len</span>(redwood_merged)<span class="sc">:,}</span><span class="ss">"</span>)</span>
-<span id="cb22-153"><a href="#cb22-153" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"</span><span class="ch">\n</span><span class="ss">Merged voltage statistics:"</span>)</span>
-<span id="cb22-154"><a href="#cb22-154" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Mean: </span><span class="sc">{</span>redwood_merged[<span class="st">'voltage'</span>]<span class="sc">.</span>mean()<span class="sc">:.2f}</span><span class="ss">V"</span>)</span>
-<span id="cb22-155"><a href="#cb22-155" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Min: </span><span class="sc">{</span>redwood_merged[<span class="st">'voltage'</span>]<span class="sc">.</span><span class="bu">min</span>()<span class="sc">:.2f}</span><span class="ss">V"</span>)</span>
-<span id="cb22-156"><a href="#cb22-156" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Max: </span><span class="sc">{</span>redwood_merged[<span class="st">'voltage'</span>]<span class="sc">.</span><span class="bu">max</span>()<span class="sc">:.2f}</span><span class="ss">V"</span>)</span>
-<span id="cb22-157"><a href="#cb22-157" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
-<span id="cb22-158"><a href="#cb22-158" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-159"><a href="#cb22-159" aria-hidden="true" tabindex="-1"></a><span class="fu">## Step 4: Clean the Merged Dataset</span></span>
-<span id="cb22-162"><a href="#cb22-162" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
-<span id="cb22-163"><a href="#cb22-163" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> python.clean <span class="im">import</span> clean_redwood_data, clean_dates_data, clean_mote_location_data</span>
-<span id="cb22-164"><a href="#cb22-164" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-165"><a href="#cb22-165" aria-hidden="true" tabindex="-1"></a>dates_df <span class="op">=</span> clean_dates_data(dates_orig)</span>
-<span id="cb22-166"><a href="#cb22-166" aria-hidden="true" tabindex="-1"></a>motes_df <span class="op">=</span> clean_mote_location_data(motes_orig)</span>
-<span id="cb22-167"><a href="#cb22-167" aria-hidden="true" tabindex="-1"></a>redwood_all_df <span class="op">=</span> clean_redwood_data(redwood_merged)</span>
-<span id="cb22-168"><a href="#cb22-168" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-169"><a href="#cb22-169" aria-hidden="true" tabindex="-1"></a><span class="co"># Calculate metrics</span></span>
-<span id="cb22-170"><a href="#cb22-170" aria-hidden="true" tabindex="-1"></a>quality_metrics <span class="op">=</span> calculate_data_quality_metrics(redwood_merged, redwood_all_df)</span>
-<span id="cb22-171"><a href="#cb22-171" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-172"><a href="#cb22-172" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"=== DATA CLEANING SUMMARY ==="</span>)</span>
-<span id="cb22-173"><a href="#cb22-173" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Original (merged): </span><span class="sc">{</span>quality_metrics[<span class="st">'original_rows'</span>]<span class="sc">:,}</span><span class="ss">"</span>)</span>
-<span id="cb22-174"><a href="#cb22-174" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Cleaned: </span><span class="sc">{</span>quality_metrics[<span class="st">'cleaned_rows'</span>]<span class="sc">:,}</span><span class="ss">"</span>)</span>
-<span id="cb22-175"><a href="#cb22-175" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Removed: </span><span class="sc">{</span>quality_metrics[<span class="st">'removed_rows'</span>]<span class="sc">:,}</span><span class="ss"> (</span><span class="sc">{</span><span class="dv">100</span> <span class="op">-</span> quality_metrics[<span class="st">'retention_pct'</span>]<span class="sc">:.1f}</span><span class="ss">%)"</span>)</span>
-<span id="cb22-176"><a href="#cb22-176" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Retention: </span><span class="sc">{</span>quality_metrics[<span class="st">'retention_pct'</span>]<span class="sc">:.1f}</span><span class="ss">%"</span>)</span>
-<span id="cb22-177"><a href="#cb22-177" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-178"><a href="#cb22-178" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"</span><span class="ch">\n</span><span class="ss">Cleaned voltage statistics:"</span>)</span>
-<span id="cb22-179"><a href="#cb22-179" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Mean: </span><span class="sc">{</span>redwood_all_df[<span class="st">'voltage'</span>]<span class="sc">.</span>mean()<span class="sc">:.2f}</span><span class="ss">V"</span>)</span>
-<span id="cb22-180"><a href="#cb22-180" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Min: </span><span class="sc">{</span>redwood_all_df[<span class="st">'voltage'</span>]<span class="sc">.</span><span class="bu">min</span>()<span class="sc">:.2f}</span><span class="ss">V"</span>)</span>
-<span id="cb22-181"><a href="#cb22-181" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Max: </span><span class="sc">{</span>redwood_all_df[<span class="st">'voltage'</span>]<span class="sc">.</span><span class="bu">max</span>()<span class="sc">:.2f}</span><span class="ss">V"</span>)</span>
-<span id="cb22-182"><a href="#cb22-182" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
-<span id="cb22-185"><a href="#cb22-185" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
-<span id="cb22-186"><a href="#cb22-186" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: voltage-before-after</span></span>
-<span id="cb22-187"><a href="#cb22-187" aria-hidden="true" tabindex="-1"></a><span class="co">#| fig-cap: "Voltage distribution before and after cleaning. Left: merged data after empirical conversion but before quality filtering shows the full range. Right: after removing invalid readings (outside 0-4V range) and other quality filters, retaining only reliable measurements."</span></span>
-<span id="cb22-188"><a href="#cb22-188" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-189"><a href="#cb22-189" aria-hidden="true" tabindex="-1"></a>fig, (ax1, ax2) <span class="op">=</span> plt.subplots(<span class="dv">1</span>, <span class="dv">2</span>, figsize<span class="op">=</span>(<span class="dv">14</span>, <span class="dv">5</span>))</span>
-<span id="cb22-190"><a href="#cb22-190" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-191"><a href="#cb22-191" aria-hidden="true" tabindex="-1"></a><span class="co"># Before cleaning</span></span>
-<span id="cb22-192"><a href="#cb22-192" aria-hidden="true" tabindex="-1"></a>ax1.hist(redwood_merged[<span class="st">'voltage'</span>].dropna(), bins<span class="op">=</span><span class="dv">50</span>, alpha<span class="op">=</span><span class="fl">0.7</span>,</span>
-<span id="cb22-193"><a href="#cb22-193" aria-hidden="true" tabindex="-1"></a>        color<span class="op">=</span><span class="st">'orange'</span>, edgecolor<span class="op">=</span><span class="st">'darkorange'</span>)</span>
-<span id="cb22-194"><a href="#cb22-194" aria-hidden="true" tabindex="-1"></a>ax1.axvline(<span class="dv">0</span>, color<span class="op">=</span><span class="st">'red'</span>, linestyle<span class="op">=</span><span class="st">'--'</span>, linewidth<span class="op">=</span><span class="dv">2</span>, label<span class="op">=</span><span class="st">'Valid range'</span>)</span>
-<span id="cb22-195"><a href="#cb22-195" aria-hidden="true" tabindex="-1"></a>ax1.axvline(<span class="dv">4</span>, color<span class="op">=</span><span class="st">'red'</span>, linestyle<span class="op">=</span><span class="st">'--'</span>, linewidth<span class="op">=</span><span class="dv">2</span>)</span>
-<span id="cb22-196"><a href="#cb22-196" aria-hidden="true" tabindex="-1"></a>ax1.axvline(<span class="fl">2.4</span>, color<span class="op">=</span><span class="st">'green'</span>, linestyle<span class="op">=</span><span class="st">':'</span>, linewidth<span class="op">=</span><span class="fl">1.5</span>, alpha<span class="op">=</span><span class="fl">0.7</span>, label<span class="op">=</span><span class="st">'Typical range'</span>)</span>
-<span id="cb22-197"><a href="#cb22-197" aria-hidden="true" tabindex="-1"></a>ax1.axvline(<span class="fl">3.0</span>, color<span class="op">=</span><span class="st">'green'</span>, linestyle<span class="op">=</span><span class="st">':'</span>, linewidth<span class="op">=</span><span class="fl">1.5</span>, alpha<span class="op">=</span><span class="fl">0.7</span>)</span>
-<span id="cb22-198"><a href="#cb22-198" aria-hidden="true" tabindex="-1"></a>ax1.set_xlabel(<span class="st">'Voltage (V)'</span>, fontsize<span class="op">=</span><span class="dv">12</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-199"><a href="#cb22-199" aria-hidden="true" tabindex="-1"></a>ax1.set_ylabel(<span class="st">'Frequency'</span>, fontsize<span class="op">=</span><span class="dv">12</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-200"><a href="#cb22-200" aria-hidden="true" tabindex="-1"></a>ax1.set_title(<span class="ss">f'Before Cleaning</span><span class="ch">\n</span><span class="ss">n = </span><span class="sc">{</span><span class="bu">len</span>(redwood_merged)<span class="sc">:,}</span><span class="ss">'</span>, fontsize<span class="op">=</span><span class="dv">14</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-201"><a href="#cb22-201" aria-hidden="true" tabindex="-1"></a>ax1.legend()</span>
-<span id="cb22-202"><a href="#cb22-202" aria-hidden="true" tabindex="-1"></a>ax1.grid(<span class="va">True</span>, alpha<span class="op">=</span><span class="fl">0.3</span>)</span>
-<span id="cb22-203"><a href="#cb22-203" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-204"><a href="#cb22-204" aria-hidden="true" tabindex="-1"></a><span class="co"># After cleaning</span></span>
-<span id="cb22-205"><a href="#cb22-205" aria-hidden="true" tabindex="-1"></a>ax2.hist(redwood_all_df[<span class="st">'voltage'</span>].dropna(), bins<span class="op">=</span><span class="dv">50</span>, alpha<span class="op">=</span><span class="fl">0.7</span>,</span>
-<span id="cb22-206"><a href="#cb22-206" aria-hidden="true" tabindex="-1"></a>        color<span class="op">=</span><span class="st">'green'</span>, edgecolor<span class="op">=</span><span class="st">'darkgreen'</span>)</span>
-<span id="cb22-207"><a href="#cb22-207" aria-hidden="true" tabindex="-1"></a>ax2.axvline(<span class="dv">0</span>, color<span class="op">=</span><span class="st">'red'</span>, linestyle<span class="op">=</span><span class="st">'--'</span>, linewidth<span class="op">=</span><span class="dv">2</span>, label<span class="op">=</span><span class="st">'Valid range'</span>)</span>
-<span id="cb22-208"><a href="#cb22-208" aria-hidden="true" tabindex="-1"></a>ax2.axvline(<span class="dv">4</span>, color<span class="op">=</span><span class="st">'red'</span>, linestyle<span class="op">=</span><span class="st">'--'</span>, linewidth<span class="op">=</span><span class="dv">2</span>)</span>
-<span id="cb22-209"><a href="#cb22-209" aria-hidden="true" tabindex="-1"></a>ax2.axvline(<span class="fl">2.4</span>, color<span class="op">=</span><span class="st">'blue'</span>, linestyle<span class="op">=</span><span class="st">':'</span>, linewidth<span class="op">=</span><span class="fl">1.5</span>, alpha<span class="op">=</span><span class="fl">0.7</span>, label<span class="op">=</span><span class="st">'Typical range'</span>)</span>
-<span id="cb22-210"><a href="#cb22-210" aria-hidden="true" tabindex="-1"></a>ax2.axvline(<span class="fl">3.0</span>, color<span class="op">=</span><span class="st">'blue'</span>, linestyle<span class="op">=</span><span class="st">':'</span>, linewidth<span class="op">=</span><span class="fl">1.5</span>, alpha<span class="op">=</span><span class="fl">0.7</span>)</span>
-<span id="cb22-211"><a href="#cb22-211" aria-hidden="true" tabindex="-1"></a>ax2.set_xlabel(<span class="st">'Voltage (V)'</span>, fontsize<span class="op">=</span><span class="dv">12</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-212"><a href="#cb22-212" aria-hidden="true" tabindex="-1"></a>ax2.set_ylabel(<span class="st">'Frequency'</span>, fontsize<span class="op">=</span><span class="dv">12</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-213"><a href="#cb22-213" aria-hidden="true" tabindex="-1"></a>ax2.set_title(<span class="ss">f'After Cleaning</span><span class="ch">\n</span><span class="ss">n = </span><span class="sc">{</span><span class="bu">len</span>(redwood_all_df)<span class="sc">:,}</span><span class="ss">'</span>, fontsize<span class="op">=</span><span class="dv">14</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-214"><a href="#cb22-214" aria-hidden="true" tabindex="-1"></a>ax2.legend()</span>
-<span id="cb22-215"><a href="#cb22-215" aria-hidden="true" tabindex="-1"></a>ax2.grid(<span class="va">True</span>, alpha<span class="op">=</span><span class="fl">0.3</span>)</span>
-<span id="cb22-216"><a href="#cb22-216" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-217"><a href="#cb22-217" aria-hidden="true" tabindex="-1"></a>plt.tight_layout()</span>
-<span id="cb22-218"><a href="#cb22-218" aria-hidden="true" tabindex="-1"></a>plt.show()</span>
-<span id="cb22-219"><a href="#cb22-219" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
-<span id="cb22-220"><a href="#cb22-220" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-221"><a href="#cb22-221" aria-hidden="true" tabindex="-1"></a><span class="fu">## Data Quality Issues and Cleaning Procedures</span></span>
-<span id="cb22-222"><a href="#cb22-222" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-223"><a href="#cb22-223" aria-hidden="true" tabindex="-1"></a>Through systematic examination, we identified several critical data quality issues:</span>
+<span id="cb22-89"><a href="#cb22-89" aria-hidden="true" tabindex="-1"></a>**Temperature (humid_temp, °C)**: Air temperature measured by the SHT11 sensor with ±0.5°C accuracy, ranging from 6.6°C to 32.6°C during the study period. Temperature is critical for understanding thermal stress on tree physiology and evaporative demand. Our research question specifically examines how temperature couples with humidity across different canopy positions, with the hypothesis that coupling strength varies with height due to differences in atmospheric exposure versus canopy buffering.</span>
+<span id="cb22-90"><a href="#cb22-90" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-91"><a href="#cb22-91" aria-hidden="true" tabindex="-1"></a>**Relative Humidity (humidity, %)**: Measured by the same SHT11 sensor with ±3.5% accuracy, ranging from 16.4% to 100%. Humidity affects transpiration rates, indicates fog presence, and is essential for understanding water stress in the canopy. This variable is central to our research question as we examine how the temperature-humidity relationship differs between upper canopy (exposed, atmosphere-dominated) and lower canopy (buffered, physiology-influenced) positions.</span>
+<span id="cb22-92"><a href="#cb22-92" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-93"><a href="#cb22-93" aria-hidden="true" tabindex="-1"></a>**Incident PAR (hamatop, µmol/m²/s)**: Photosynthetically active radiation measured by an upward-facing Hamamatsu S1087 photodiode, ranging from 0 (nighttime) to over 2,150 µmol/m²/s (full midday sun at canopy top). While not the primary focus of our analysis, PAR is important because it drives both temperature patterns (through radiative heating) and humidity patterns (through increased evaporative demand), helping explain the mechanisms behind temperature-humidity coupling.</span>
+<span id="cb22-94"><a href="#cb22-94" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-95"><a href="#cb22-95" aria-hidden="true" tabindex="-1"></a>**Height (meters)**: The vertical position of each sensor above ground level, distributed from 15m to 70m with approximately 2-meter spacing. Height is our primary spatial dimension for examining how environmental processes differ vertically within the canopy. We classify sensors into three layers (Lower: &lt;35m, Middle: 35-55m, Upper: &gt;55m) to test whether temperature-humidity relationships transition systematically from buffered conditions near the ground to atmosphere-dominated conditions at the canopy top.</span>
+<span id="cb22-96"><a href="#cb22-96" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-97"><a href="#cb22-97" aria-hidden="true" tabindex="-1"></a>**Voltage (volts)**: Battery voltage, with optimal sensor operation in the 2.4-3.0V range. While not a biological or environmental variable, voltage is a critical quality indicator because temperature and humidity sensors become unreliable when battery voltage drops below approximately 2.4V. We use voltage to filter invalid measurements and identify periods when sensor accuracy may be compromised due to insufficient power supply.</span>
+<span id="cb22-98"><a href="#cb22-98" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-99"><a href="#cb22-99" aria-hidden="true" tabindex="-1"></a><span class="fu">## Advantages and Limitations of the Dataset</span></span>
+<span id="cb22-100"><a href="#cb22-100" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-101"><a href="#cb22-101" aria-hidden="true" tabindex="-1"></a>This dataset is uniquely suited to studying temperature-humidity relationships across canopy heights due to several advantages in the context of our research question:</span>
+<span id="cb22-102"><a href="#cb22-102" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-103"><a href="#cb22-103" aria-hidden="true" tabindex="-1"></a>**High spatial density**: The approximately 2-meter vertical spacing across 55 meters of vertical extent provides fine-scale resolution to detect microclimate gradients and identify the transition zone where temperature-humidity coupling shifts from atmosphere-dominated (upper canopy) to canopy-buffered (lower canopy) patterns. Most forest microclimate studies use much coarser spacing (5-10m), which would miss important transition dynamics.</span>
+<span id="cb22-104"><a href="#cb22-104" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-105"><a href="#cb22-105" aria-hidden="true" tabindex="-1"></a>**High temporal resolution**: Five-minute measurement intervals capture diurnal cycles and transient events such as fog intrusions and rapid solar heating that drive temperature-humidity dynamics. This temporal resolution is essential for understanding whether temperature and humidity are coupled in real-time (responding simultaneously to atmospheric forcing) or whether time lags and buffering processes decouple their relationship at certain canopy positions.</span>
+<span id="cb22-106"><a href="#cb22-106" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-107"><a href="#cb22-107" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-108"><a href="#cb22-108" aria-hidden="true" tabindex="-1"></a>**Single-sided deployment**: Sensors were concentrated on the western side of the tree only. Temperature-humidity relationships may differ on the eastern exposure due to differences in solar heating timing (morning versus afternoon), potentially limiting the generalizability of our conclusions about coupling patterns to other aspects and tree structures.</span>
+<span id="cb22-109"><a href="#cb22-109" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-110"><a href="#cb22-110" aria-hidden="true" tabindex="-1"></a>**Substantial missing data**: The combination of network transmission failures (60% data loss), local logging capacity limits, and voltage-based quality filtering resulted in 51% missing data overall. This missing data may introduce temporal bias, as battery failures increased over time, meaning early study periods are better represented than later periods. Additionally, this could bias our conclusions if data loss was not random across canopy positions.</span>
+<span id="cb22-111"><a href="#cb22-111" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-112"><a href="#cb22-112" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-113"><a href="#cb22-113" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-114"><a href="#cb22-114" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-115"><a href="#cb22-115" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-116"><a href="#cb22-116" aria-hidden="true" tabindex="-1"></a><span class="fu"># Data Cleaning</span></span>
+<span id="cb22-117"><a href="#cb22-117" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-118"><a href="#cb22-118" aria-hidden="true" tabindex="-1"></a><span class="fu">## Step 1: Load Datasets and Examine Voltage Distributions</span></span>
+<span id="cb22-121"><a href="#cb22-121" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
+<span id="cb22-122"><a href="#cb22-122" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: load-datasets</span></span>
+<span id="cb22-123"><a href="#cb22-123" aria-hidden="true" tabindex="-1"></a><span class="co"># Load net and log datasets separately</span></span>
+<span id="cb22-124"><a href="#cb22-124" aria-hidden="true" tabindex="-1"></a>redwood_net_orig <span class="op">=</span> load_redwood_data(DATA_PATH, source<span class="op">=</span><span class="st">"net"</span>)</span>
+<span id="cb22-125"><a href="#cb22-125" aria-hidden="true" tabindex="-1"></a>redwood_log_orig <span class="op">=</span> load_redwood_data(DATA_PATH, source<span class="op">=</span><span class="st">"log"</span>)</span>
+<span id="cb22-126"><a href="#cb22-126" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-127"><a href="#cb22-127" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"=== ORIGINAL DATASETS ==="</span>)</span>
+<span id="cb22-128"><a href="#cb22-128" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Network dataset: </span><span class="sc">{</span><span class="bu">len</span>(redwood_net_orig)<span class="sc">:,}</span><span class="ss"> observations"</span>)</span>
+<span id="cb22-129"><a href="#cb22-129" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Log dataset: </span><span class="sc">{</span><span class="bu">len</span>(redwood_log_orig)<span class="sc">:,}</span><span class="ss"> observations"</span>)</span>
+<span id="cb22-130"><a href="#cb22-130" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-131"><a href="#cb22-131" aria-hidden="true" tabindex="-1"></a>net_voltage_mean <span class="op">=</span> redwood_net_orig[<span class="st">'voltage'</span>].mean()</span>
+<span id="cb22-132"><a href="#cb22-132" aria-hidden="true" tabindex="-1"></a>log_voltage_mean <span class="op">=</span> redwood_log_orig[<span class="st">'voltage'</span>].mean()</span>
+<span id="cb22-133"><a href="#cb22-133" aria-hidden="true" tabindex="-1"></a>net_voltage_max <span class="op">=</span> redwood_net_orig[<span class="st">'voltage'</span>].<span class="bu">max</span>()</span>
+<span id="cb22-134"><a href="#cb22-134" aria-hidden="true" tabindex="-1"></a>log_voltage_max <span class="op">=</span> redwood_log_orig[<span class="st">'voltage'</span>].<span class="bu">max</span>()</span>
+<span id="cb22-135"><a href="#cb22-135" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-136"><a href="#cb22-136" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"</span><span class="ch">\n</span><span class="ss">Net voltage: mean=</span><span class="sc">{</span>net_voltage_mean<span class="sc">:.2f}</span><span class="ss">, max=</span><span class="sc">{</span>net_voltage_max<span class="sc">:.2f}</span><span class="ss">"</span>)</span>
+<span id="cb22-137"><a href="#cb22-137" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Log voltage: mean=</span><span class="sc">{</span>log_voltage_mean<span class="sc">:.2f}</span><span class="ss">, max=</span><span class="sc">{</span>log_voltage_max<span class="sc">:.2f}</span><span class="ss">"</span>)</span>
+<span id="cb22-138"><a href="#cb22-138" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-139"><a href="#cb22-139" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> net_voltage_max <span class="op">&gt;</span> <span class="dv">100</span> <span class="kw">and</span> log_voltage_max <span class="op">&lt;</span> <span class="dv">10</span>:</span>
+<span id="cb22-140"><a href="#cb22-140" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"Net dataset: Raw ADC values (0-1023)"</span>)</span>
+<span id="cb22-141"><a href="#cb22-141" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"Log dataset: Actual voltages (0-3.3V)"</span>)</span>
+<span id="cb22-142"><a href="#cb22-142" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"These need to be aligned before merging!"</span>)</span>
+<span id="cb22-143"><a href="#cb22-143" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb22-144"><a href="#cb22-144" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-145"><a href="#cb22-145" aria-hidden="true" tabindex="-1"></a><span class="fu">## Step 2: Empirical Voltage Calibration</span></span>
+<span id="cb22-148"><a href="#cb22-148" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
+<span id="cb22-149"><a href="#cb22-149" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> python.clean <span class="im">import</span> find_empirical_voltage_conversion</span>
+<span id="cb22-150"><a href="#cb22-150" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-151"><a href="#cb22-151" aria-hidden="true" tabindex="-1"></a><span class="co"># Finding empirical conversion by matching distributions</span></span>
+<span id="cb22-152"><a href="#cb22-152" aria-hidden="true" tabindex="-1"></a><span class="co">#it's a heuristic common approach</span></span>
+<span id="cb22-153"><a href="#cb22-153" aria-hidden="true" tabindex="-1"></a>conversion_factor, conversion_offset, calibration_fig <span class="op">=</span> find_empirical_voltage_conversion(</span>
+<span id="cb22-154"><a href="#cb22-154" aria-hidden="true" tabindex="-1"></a>    redwood_net_orig,</span>
+<span id="cb22-155"><a href="#cb22-155" aria-hidden="true" tabindex="-1"></a>    redwood_log_orig</span>
+<span id="cb22-156"><a href="#cb22-156" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb22-157"><a href="#cb22-157" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-158"><a href="#cb22-158" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"</span><span class="ch">\n</span><span class="ss"> EMPIRICAL CONVERSION FORMULA:"</span>)</span>
+<span id="cb22-159"><a href="#cb22-159" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"   V_corrected = </span><span class="sc">{</span>conversion_factor<span class="sc">:.6f}</span><span class="ss"> × V_net + </span><span class="sc">{</span>conversion_offset<span class="sc">:.6f}</span><span class="ss">"</span>)</span>
+<span id="cb22-160"><a href="#cb22-160" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb22-163"><a href="#cb22-163" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
+<span id="cb22-164"><a href="#cb22-164" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: calibration-plot</span></span>
+<span id="cb22-165"><a href="#cb22-165" aria-hidden="true" tabindex="-1"></a><span class="co">#| fig-cap: "Empirical voltage calibration by matching distribution percentiles across log and net (My own idea). Top row: original distributions and percentile-based linear fit showing how to align them. Bottom row: distributions after conversion with overlay (left), valid range zoom (middle), and Q-Q plot confirming alignment (right)."</span></span>
+<span id="cb22-166"><a href="#cb22-166" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-167"><a href="#cb22-167" aria-hidden="true" tabindex="-1"></a>plt.figure(calibration_fig.number)</span>
+<span id="cb22-168"><a href="#cb22-168" aria-hidden="true" tabindex="-1"></a>plt.show()</span>
+<span id="cb22-169"><a href="#cb22-169" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb22-170"><a href="#cb22-170" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-171"><a href="#cb22-171" aria-hidden="true" tabindex="-1"></a>Rather than relying on theoretical conversion formulas that may not reflect the actual hardware configuration, we use an empirical approach to align the voltage distributions. We match the 25th, 50th, and 75th percentiles between the Net and Log datasets to find a linear transformation (scale + offset) that makes the distributions align. This data-driven method accounts for any calibration differences, reference voltage variations, or systematic offsets between the two data collection systems.</span>
+<span id="cb22-172"><a href="#cb22-172" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-173"><a href="#cb22-173" aria-hidden="true" tabindex="-1"></a><span class="fu">## Step 3: Apply Conversion and Merge Datasets</span></span>
+<span id="cb22-176"><a href="#cb22-176" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
+<span id="cb22-177"><a href="#cb22-177" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: apply-conversion-merge</span></span>
+<span id="cb22-178"><a href="#cb22-178" aria-hidden="true" tabindex="-1"></a><span class="co"># Apply empirical conversion to net dataset</span></span>
+<span id="cb22-179"><a href="#cb22-179" aria-hidden="true" tabindex="-1"></a>redwood_net_converted <span class="op">=</span> redwood_net_orig.copy()</span>
+<span id="cb22-180"><a href="#cb22-180" aria-hidden="true" tabindex="-1"></a>redwood_net_converted[<span class="st">'voltage'</span>] <span class="op">=</span> (redwood_net_orig[<span class="st">'voltage'</span>] <span class="op">*</span> conversion_factor <span class="op">+</span> conversion_offset)</span>
+<span id="cb22-181"><a href="#cb22-181" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-182"><a href="#cb22-182" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"=== VOLTAGE AFTER EMPIRICAL CONVERSION ==="</span>)</span>
+<span id="cb22-183"><a href="#cb22-183" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Net converted: mean=</span><span class="sc">{</span>redwood_net_converted[<span class="st">'voltage'</span>]<span class="sc">.</span>mean()<span class="sc">:.2f}</span><span class="ss">V, range=[</span><span class="sc">{</span>redwood_net_converted[<span class="st">'voltage'</span>]<span class="sc">.</span><span class="bu">min</span>()<span class="sc">:.2f}</span><span class="ss">, </span><span class="sc">{</span>redwood_net_converted[<span class="st">'voltage'</span>]<span class="sc">.</span><span class="bu">max</span>()<span class="sc">:.2f}</span><span class="ss">]"</span>)</span>
+<span id="cb22-184"><a href="#cb22-184" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Log original:  mean=</span><span class="sc">{</span>redwood_log_orig[<span class="st">'voltage'</span>]<span class="sc">.</span>mean()<span class="sc">:.2f}</span><span class="ss">V, range=[</span><span class="sc">{</span>redwood_log_orig[<span class="st">'voltage'</span>]<span class="sc">.</span><span class="bu">min</span>()<span class="sc">:.2f}</span><span class="ss">, </span><span class="sc">{</span>redwood_log_orig[<span class="st">'voltage'</span>]<span class="sc">.</span><span class="bu">max</span>()<span class="sc">:.2f}</span><span class="ss">]"</span>)</span>
+<span id="cb22-185"><a href="#cb22-185" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Mean difference after conversion: </span><span class="sc">{</span><span class="bu">abs</span>(redwood_net_converted[<span class="st">'voltage'</span>].mean() <span class="op">-</span> redwood_log_orig[<span class="st">'voltage'</span>].mean())<span class="sc">:.3f}</span><span class="ss">V"</span>)</span>
+<span id="cb22-186"><a href="#cb22-186" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-187"><a href="#cb22-187" aria-hidden="true" tabindex="-1"></a>redwood_net_converted[<span class="st">'source'</span>] <span class="op">=</span> <span class="st">'net'</span></span>
+<span id="cb22-188"><a href="#cb22-188" aria-hidden="true" tabindex="-1"></a>redwood_log_orig[<span class="st">'source'</span>] <span class="op">=</span> <span class="st">'log'</span></span>
+<span id="cb22-189"><a href="#cb22-189" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-190"><a href="#cb22-190" aria-hidden="true" tabindex="-1"></a>redwood_merged <span class="op">=</span> pd.concat([redwood_net_converted, redwood_log_orig], ignore_index<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb22-191"><a href="#cb22-191" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Before removing duplicates: </span><span class="sc">{</span><span class="bu">len</span>(redwood_merged)<span class="sc">:,}</span><span class="ss">"</span>)</span>
+<span id="cb22-192"><a href="#cb22-192" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-193"><a href="#cb22-193" aria-hidden="true" tabindex="-1"></a><span class="co"># Remove duplicates (same sensor, same time, same measurement period)</span></span>
+<span id="cb22-194"><a href="#cb22-194" aria-hidden="true" tabindex="-1"></a>redwood_merged <span class="op">=</span> redwood_merged.drop_duplicates(</span>
+<span id="cb22-195"><a href="#cb22-195" aria-hidden="true" tabindex="-1"></a>    subset<span class="op">=</span>[<span class="st">'nodeid'</span>, <span class="st">'result_time'</span>, <span class="st">'epoch'</span>],</span>
+<span id="cb22-196"><a href="#cb22-196" aria-hidden="true" tabindex="-1"></a>    keep<span class="op">=</span><span class="st">'first'</span></span>
+<span id="cb22-197"><a href="#cb22-197" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb22-198"><a href="#cb22-198" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-199"><a href="#cb22-199" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"After removing duplicates: </span><span class="sc">{</span><span class="bu">len</span>(redwood_merged)<span class="sc">:,}</span><span class="ss">"</span>)</span>
+<span id="cb22-200"><a href="#cb22-200" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"</span><span class="ch">\n</span><span class="ss">Merged voltage statistics:"</span>)</span>
+<span id="cb22-201"><a href="#cb22-201" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Mean: </span><span class="sc">{</span>redwood_merged[<span class="st">'voltage'</span>]<span class="sc">.</span>mean()<span class="sc">:.2f}</span><span class="ss">V"</span>)</span>
+<span id="cb22-202"><a href="#cb22-202" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Min: </span><span class="sc">{</span>redwood_merged[<span class="st">'voltage'</span>]<span class="sc">.</span><span class="bu">min</span>()<span class="sc">:.2f}</span><span class="ss">V"</span>)</span>
+<span id="cb22-203"><a href="#cb22-203" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Max: </span><span class="sc">{</span>redwood_merged[<span class="st">'voltage'</span>]<span class="sc">.</span><span class="bu">max</span>()<span class="sc">:.2f}</span><span class="ss">V"</span>)</span>
+<span id="cb22-204"><a href="#cb22-204" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb22-205"><a href="#cb22-205" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-206"><a href="#cb22-206" aria-hidden="true" tabindex="-1"></a><span class="fu">## Step 4: Clean the Merged Dataset</span></span>
+<span id="cb22-209"><a href="#cb22-209" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
+<span id="cb22-210"><a href="#cb22-210" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> python.clean <span class="im">import</span> clean_redwood_data, clean_dates_data, clean_mote_location_data</span>
+<span id="cb22-211"><a href="#cb22-211" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-212"><a href="#cb22-212" aria-hidden="true" tabindex="-1"></a>dates_df <span class="op">=</span> clean_dates_data(dates_orig)</span>
+<span id="cb22-213"><a href="#cb22-213" aria-hidden="true" tabindex="-1"></a>motes_df <span class="op">=</span> clean_mote_location_data(motes_orig)</span>
+<span id="cb22-214"><a href="#cb22-214" aria-hidden="true" tabindex="-1"></a>redwood_all_df <span class="op">=</span> clean_redwood_data(redwood_merged)</span>
+<span id="cb22-215"><a href="#cb22-215" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-216"><a href="#cb22-216" aria-hidden="true" tabindex="-1"></a><span class="co"># Calculate metrics</span></span>
+<span id="cb22-217"><a href="#cb22-217" aria-hidden="true" tabindex="-1"></a>quality_metrics <span class="op">=</span> calculate_data_quality_metrics(redwood_merged, redwood_all_df)</span>
+<span id="cb22-218"><a href="#cb22-218" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-219"><a href="#cb22-219" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"=== DATA CLEANING SUMMARY ==="</span>)</span>
+<span id="cb22-220"><a href="#cb22-220" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Original (merged): </span><span class="sc">{</span>quality_metrics[<span class="st">'original_rows'</span>]<span class="sc">:,}</span><span class="ss">"</span>)</span>
+<span id="cb22-221"><a href="#cb22-221" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Cleaned: </span><span class="sc">{</span>quality_metrics[<span class="st">'cleaned_rows'</span>]<span class="sc">:,}</span><span class="ss">"</span>)</span>
+<span id="cb22-222"><a href="#cb22-222" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Removed: </span><span class="sc">{</span>quality_metrics[<span class="st">'removed_rows'</span>]<span class="sc">:,}</span><span class="ss"> (</span><span class="sc">{</span><span class="dv">100</span> <span class="op">-</span> quality_metrics[<span class="st">'retention_pct'</span>]<span class="sc">:.1f}</span><span class="ss">%)"</span>)</span>
+<span id="cb22-223"><a href="#cb22-223" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Retention: </span><span class="sc">{</span>quality_metrics[<span class="st">'retention_pct'</span>]<span class="sc">:.1f}</span><span class="ss">%"</span>)</span>
 <span id="cb22-224"><a href="#cb22-224" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-225"><a href="#cb22-225" aria-hidden="true" tabindex="-1"></a><span class="fu">### 1. Voltage Scale Inconsistency</span></span>
-<span id="cb22-226"><a href="#cb22-226" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-227"><a href="#cb22-227" aria-hidden="true" tabindex="-1"></a>The network and log datasets recorded voltage in fundamentally different scales. The network dataset used raw ADC (analog-to-digital converter) values ranging from 0-1023, while the log dataset stored actual voltages in the 0-3.3V range. Simply merging these datasets would create artificial patterns and invalidate any voltage-based quality filtering.</span>
-<span id="cb22-228"><a href="#cb22-228" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-229"><a href="#cb22-229" aria-hidden="true" tabindex="-1"></a>Rather than applying a theoretical conversion formula (which assumes knowledge of the exact reference voltage and ADC configuration),I used an empirical calibration approach. We matched the statistical distributions of the two datasets by finding the linear transformation (scale factor and offset) that aligns their percentiles. </span>
-<span id="cb22-230"><a href="#cb22-230" aria-hidden="true" tabindex="-1"></a> V_corrected = 0.016291 × V_net + -0.926464</span>
-<span id="cb22-231"><a href="#cb22-231" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-232"><a href="#cb22-232" aria-hidden="true" tabindex="-1"></a><span class="fu">### 2. Invalid Voltage Readings</span></span>
-<span id="cb22-233"><a href="#cb22-233" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-234"><a href="#cb22-234" aria-hidden="true" tabindex="-1"></a>We filtered data to retain only readings with voltage between 0-4V. While the typical operating range for these sensors is 2.4-3.0V (shown as dotted green/blue lines in the plots). Values outside 0-4V represent sensor malfunctions or data corruption.</span>
+<span id="cb22-225"><a href="#cb22-225" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"</span><span class="ch">\n</span><span class="ss">Cleaned voltage statistics:"</span>)</span>
+<span id="cb22-226"><a href="#cb22-226" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Mean: </span><span class="sc">{</span>redwood_all_df[<span class="st">'voltage'</span>]<span class="sc">.</span>mean()<span class="sc">:.2f}</span><span class="ss">V"</span>)</span>
+<span id="cb22-227"><a href="#cb22-227" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Min: </span><span class="sc">{</span>redwood_all_df[<span class="st">'voltage'</span>]<span class="sc">.</span><span class="bu">min</span>()<span class="sc">:.2f}</span><span class="ss">V"</span>)</span>
+<span id="cb22-228"><a href="#cb22-228" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Max: </span><span class="sc">{</span>redwood_all_df[<span class="st">'voltage'</span>]<span class="sc">.</span><span class="bu">max</span>()<span class="sc">:.2f}</span><span class="ss">V"</span>)</span>
+<span id="cb22-229"><a href="#cb22-229" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb22-232"><a href="#cb22-232" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
+<span id="cb22-233"><a href="#cb22-233" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: voltage-before-after</span></span>
+<span id="cb22-234"><a href="#cb22-234" aria-hidden="true" tabindex="-1"></a><span class="co">#| fig-cap: "Voltage distribution before and after cleaning. Left: merged data after empirical conversion but before quality filtering shows the full range. Right: after removing invalid readings (outside 0-4V range) and other quality filters, retaining only reliable measurements."</span></span>
 <span id="cb22-235"><a href="#cb22-235" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-236"><a href="#cb22-236" aria-hidden="true" tabindex="-1"></a><span class="fu">### 3. Impossible Physical Values</span></span>
+<span id="cb22-236"><a href="#cb22-236" aria-hidden="true" tabindex="-1"></a>fig, (ax1, ax2) <span class="op">=</span> plt.subplots(<span class="dv">1</span>, <span class="dv">2</span>, figsize<span class="op">=</span>(<span class="dv">14</span>, <span class="dv">5</span>))</span>
 <span id="cb22-237"><a href="#cb22-237" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-238"><a href="#cb22-238" aria-hidden="true" tabindex="-1"></a>We removed readings that violated physical constraints:</span>
-<span id="cb22-239"><a href="#cb22-239" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Humidity outside 0-100% (relative humidity cannot exceed saturation or be negative)</span>
-<span id="cb22-240"><a href="#cb22-240" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Temperature outside -20°C to 50°C (far outside the range possible in coastal California)</span>
-<span id="cb22-241"><a href="#cb22-241" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Negative PAR values (light intensity cannot be negative)</span>
-<span id="cb22-242"><a href="#cb22-242" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-243"><a href="#cb22-243" aria-hidden="true" tabindex="-1"></a><span class="fu">### 4. Duplicate Measurements</span></span>
-<span id="cb22-244"><a href="#cb22-244" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-245"><a href="#cb22-245" aria-hidden="true" tabindex="-1"></a>After merging the network and log datasets, some measurements appeared twice. We removed duplicates by identifying measurements with matching sensor ID, timestamp, and measurement period, keeping only the first occurrence. </span>
-<span id="cb22-246"><a href="#cb22-246" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-247"><a href="#cb22-247" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-248"><a href="#cb22-248" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-249"><a href="#cb22-249" aria-hidden="true" tabindex="-1"></a><span class="fu"># Exploratory Data Analysis</span></span>
-<span id="cb22-252"><a href="#cb22-252" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
-<span id="cb22-253"><a href="#cb22-253" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: prepare-analysis</span></span>
-<span id="cb22-254"><a href="#cb22-254" aria-hidden="true" tabindex="-1"></a><span class="co"># Prepare analysis-ready dataset with canopy layers</span></span>
-<span id="cb22-255"><a href="#cb22-255" aria-hidden="true" tabindex="-1"></a>analysis_data <span class="op">=</span> prepare_analysis_data(redwood_all_df, motes_df)</span>
-<span id="cb22-256"><a href="#cb22-256" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-257"><a href="#cb22-257" aria-hidden="true" tabindex="-1"></a><span class="co"># Display layer statistics</span></span>
-<span id="cb22-258"><a href="#cb22-258" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"=== OBSERVATIONS BY CANOPY LAYER ==="</span>)</span>
-<span id="cb22-259"><a href="#cb22-259" aria-hidden="true" tabindex="-1"></a>layer_counts <span class="op">=</span> analysis_data.groupby(<span class="st">'canopy_layer'</span>).size()</span>
-<span id="cb22-260"><a href="#cb22-260" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> layer <span class="kw">in</span> [<span class="st">'Lower'</span>, <span class="st">'Middle'</span>, <span class="st">'Upper'</span>]:</span>
-<span id="cb22-261"><a href="#cb22-261" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"</span><span class="sc">{</span>layer<span class="sc">}</span><span class="ss"> canopy: </span><span class="sc">{</span>layer_counts[layer]<span class="sc">:,}</span><span class="ss"> observations"</span>)</span>
-<span id="cb22-262"><a href="#cb22-262" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-263"><a href="#cb22-263" aria-hidden="true" tabindex="-1"></a><span class="co"># Temperature-humidity statistics by layer</span></span>
-<span id="cb22-264"><a href="#cb22-264" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"</span><span class="ch">\n</span><span class="st">=== TEMPERATURE-HUMIDITY STATISTICS BY LAYER ==="</span>)</span>
-<span id="cb22-265"><a href="#cb22-265" aria-hidden="true" tabindex="-1"></a>layer_stats <span class="op">=</span> analysis_data.groupby(<span class="st">'canopy_layer'</span>).agg({</span>
-<span id="cb22-266"><a href="#cb22-266" aria-hidden="true" tabindex="-1"></a>    <span class="st">'humid_temp'</span>: [<span class="st">'mean'</span>, <span class="st">'std'</span>],</span>
-<span id="cb22-267"><a href="#cb22-267" aria-hidden="true" tabindex="-1"></a>    <span class="st">'humidity'</span>: [<span class="st">'mean'</span>, <span class="st">'std'</span>]</span>
-<span id="cb22-268"><a href="#cb22-268" aria-hidden="true" tabindex="-1"></a>}).<span class="bu">round</span>(<span class="dv">2</span>)</span>
-<span id="cb22-269"><a href="#cb22-269" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(layer_stats)</span>
-<span id="cb22-270"><a href="#cb22-270" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb22-238"><a href="#cb22-238" aria-hidden="true" tabindex="-1"></a><span class="co"># Before cleaning</span></span>
+<span id="cb22-239"><a href="#cb22-239" aria-hidden="true" tabindex="-1"></a>ax1.hist(redwood_merged[<span class="st">'voltage'</span>].dropna(), bins<span class="op">=</span><span class="dv">50</span>, alpha<span class="op">=</span><span class="fl">0.7</span>,</span>
+<span id="cb22-240"><a href="#cb22-240" aria-hidden="true" tabindex="-1"></a>        color<span class="op">=</span><span class="st">'orange'</span>, edgecolor<span class="op">=</span><span class="st">'darkorange'</span>)</span>
+<span id="cb22-241"><a href="#cb22-241" aria-hidden="true" tabindex="-1"></a>ax1.axvline(<span class="dv">0</span>, color<span class="op">=</span><span class="st">'red'</span>, linestyle<span class="op">=</span><span class="st">'--'</span>, linewidth<span class="op">=</span><span class="dv">2</span>, label<span class="op">=</span><span class="st">'Valid range'</span>)</span>
+<span id="cb22-242"><a href="#cb22-242" aria-hidden="true" tabindex="-1"></a>ax1.axvline(<span class="dv">4</span>, color<span class="op">=</span><span class="st">'red'</span>, linestyle<span class="op">=</span><span class="st">'--'</span>, linewidth<span class="op">=</span><span class="dv">2</span>)</span>
+<span id="cb22-243"><a href="#cb22-243" aria-hidden="true" tabindex="-1"></a>ax1.axvline(<span class="fl">2.4</span>, color<span class="op">=</span><span class="st">'green'</span>, linestyle<span class="op">=</span><span class="st">':'</span>, linewidth<span class="op">=</span><span class="fl">1.5</span>, alpha<span class="op">=</span><span class="fl">0.7</span>, label<span class="op">=</span><span class="st">'Typical range'</span>)</span>
+<span id="cb22-244"><a href="#cb22-244" aria-hidden="true" tabindex="-1"></a>ax1.axvline(<span class="fl">3.0</span>, color<span class="op">=</span><span class="st">'green'</span>, linestyle<span class="op">=</span><span class="st">':'</span>, linewidth<span class="op">=</span><span class="fl">1.5</span>, alpha<span class="op">=</span><span class="fl">0.7</span>)</span>
+<span id="cb22-245"><a href="#cb22-245" aria-hidden="true" tabindex="-1"></a>ax1.set_xlabel(<span class="st">'Voltage (V)'</span>, fontsize<span class="op">=</span><span class="dv">12</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-246"><a href="#cb22-246" aria-hidden="true" tabindex="-1"></a>ax1.set_ylabel(<span class="st">'Frequency'</span>, fontsize<span class="op">=</span><span class="dv">12</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-247"><a href="#cb22-247" aria-hidden="true" tabindex="-1"></a>ax1.set_title(<span class="ss">f'Before Cleaning</span><span class="ch">\n</span><span class="ss">n = </span><span class="sc">{</span><span class="bu">len</span>(redwood_merged)<span class="sc">:,}</span><span class="ss">'</span>, fontsize<span class="op">=</span><span class="dv">14</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-248"><a href="#cb22-248" aria-hidden="true" tabindex="-1"></a>ax1.legend()</span>
+<span id="cb22-249"><a href="#cb22-249" aria-hidden="true" tabindex="-1"></a>ax1.grid(<span class="va">True</span>, alpha<span class="op">=</span><span class="fl">0.3</span>)</span>
+<span id="cb22-250"><a href="#cb22-250" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-251"><a href="#cb22-251" aria-hidden="true" tabindex="-1"></a><span class="co"># After cleaning</span></span>
+<span id="cb22-252"><a href="#cb22-252" aria-hidden="true" tabindex="-1"></a>ax2.hist(redwood_all_df[<span class="st">'voltage'</span>].dropna(), bins<span class="op">=</span><span class="dv">50</span>, alpha<span class="op">=</span><span class="fl">0.7</span>,</span>
+<span id="cb22-253"><a href="#cb22-253" aria-hidden="true" tabindex="-1"></a>        color<span class="op">=</span><span class="st">'green'</span>, edgecolor<span class="op">=</span><span class="st">'darkgreen'</span>)</span>
+<span id="cb22-254"><a href="#cb22-254" aria-hidden="true" tabindex="-1"></a>ax2.axvline(<span class="dv">0</span>, color<span class="op">=</span><span class="st">'red'</span>, linestyle<span class="op">=</span><span class="st">'--'</span>, linewidth<span class="op">=</span><span class="dv">2</span>, label<span class="op">=</span><span class="st">'Valid range'</span>)</span>
+<span id="cb22-255"><a href="#cb22-255" aria-hidden="true" tabindex="-1"></a>ax2.axvline(<span class="dv">4</span>, color<span class="op">=</span><span class="st">'red'</span>, linestyle<span class="op">=</span><span class="st">'--'</span>, linewidth<span class="op">=</span><span class="dv">2</span>)</span>
+<span id="cb22-256"><a href="#cb22-256" aria-hidden="true" tabindex="-1"></a>ax2.axvline(<span class="fl">2.4</span>, color<span class="op">=</span><span class="st">'blue'</span>, linestyle<span class="op">=</span><span class="st">':'</span>, linewidth<span class="op">=</span><span class="fl">1.5</span>, alpha<span class="op">=</span><span class="fl">0.7</span>, label<span class="op">=</span><span class="st">'Typical range'</span>)</span>
+<span id="cb22-257"><a href="#cb22-257" aria-hidden="true" tabindex="-1"></a>ax2.axvline(<span class="fl">3.0</span>, color<span class="op">=</span><span class="st">'blue'</span>, linestyle<span class="op">=</span><span class="st">':'</span>, linewidth<span class="op">=</span><span class="fl">1.5</span>, alpha<span class="op">=</span><span class="fl">0.7</span>)</span>
+<span id="cb22-258"><a href="#cb22-258" aria-hidden="true" tabindex="-1"></a>ax2.set_xlabel(<span class="st">'Voltage (V)'</span>, fontsize<span class="op">=</span><span class="dv">12</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-259"><a href="#cb22-259" aria-hidden="true" tabindex="-1"></a>ax2.set_ylabel(<span class="st">'Frequency'</span>, fontsize<span class="op">=</span><span class="dv">12</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-260"><a href="#cb22-260" aria-hidden="true" tabindex="-1"></a>ax2.set_title(<span class="ss">f'After Cleaning</span><span class="ch">\n</span><span class="ss">n = </span><span class="sc">{</span><span class="bu">len</span>(redwood_all_df)<span class="sc">:,}</span><span class="ss">'</span>, fontsize<span class="op">=</span><span class="dv">14</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-261"><a href="#cb22-261" aria-hidden="true" tabindex="-1"></a>ax2.legend()</span>
+<span id="cb22-262"><a href="#cb22-262" aria-hidden="true" tabindex="-1"></a>ax2.grid(<span class="va">True</span>, alpha<span class="op">=</span><span class="fl">0.3</span>)</span>
+<span id="cb22-263"><a href="#cb22-263" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-264"><a href="#cb22-264" aria-hidden="true" tabindex="-1"></a>plt.tight_layout()</span>
+<span id="cb22-265"><a href="#cb22-265" aria-hidden="true" tabindex="-1"></a>plt.show()</span>
+<span id="cb22-266"><a href="#cb22-266" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb22-267"><a href="#cb22-267" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-268"><a href="#cb22-268" aria-hidden="true" tabindex="-1"></a><span class="fu">## Data Quality Issues and Cleaning Procedures</span></span>
+<span id="cb22-269"><a href="#cb22-269" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-270"><a href="#cb22-270" aria-hidden="true" tabindex="-1"></a>Through systematic examination, we identified several critical data quality issues:</span>
 <span id="cb22-271"><a href="#cb22-271" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-272"><a href="#cb22-272" aria-hidden="true" tabindex="-1"></a><span class="fu">## Finding 1: Temperature-Humidity Relationships Differ by Canopy Layer</span></span>
-<span id="cb22-275"><a href="#cb22-275" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
-<span id="cb22-276"><a href="#cb22-276" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: finding1-hexbin</span></span>
-<span id="cb22-277"><a href="#cb22-277" aria-hidden="true" tabindex="-1"></a><span class="co">#| fig-cap: "Temperature-humidity relationships across three canopy layers. Each panel shows hexbin density plots where darker red colors indicate higher density of observations. The upper canopy shows a clear inverse relationship between temperature and humidity, while the lower canopy shows a more diffuse pattern with points scattered throughout the parameter space."</span></span>
+<span id="cb22-272"><a href="#cb22-272" aria-hidden="true" tabindex="-1"></a><span class="fu">### 1. Voltage Scale Inconsistency</span></span>
+<span id="cb22-273"><a href="#cb22-273" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-274"><a href="#cb22-274" aria-hidden="true" tabindex="-1"></a>The network and log datasets recorded voltage in fundamentally different scales. The network dataset used raw ADC (analog-to-digital converter) values ranging from 0-1023, while the log dataset stored actual voltages in the 0-3.3V range. Simply merging these datasets would create artificial patterns and invalidate any voltage-based quality filtering.</span>
+<span id="cb22-275"><a href="#cb22-275" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-276"><a href="#cb22-276" aria-hidden="true" tabindex="-1"></a>Rather than applying a theoretical conversion formula (which assumes knowledge of the exact reference voltage and ADC configuration),I used an empirical calibration approach. We matched the statistical distributions of the two datasets by finding the linear transformation (scale factor and offset) that aligns their percentiles. </span>
+<span id="cb22-277"><a href="#cb22-277" aria-hidden="true" tabindex="-1"></a> V_corrected = 0.016291 × V_net + -0.926464</span>
 <span id="cb22-278"><a href="#cb22-278" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-279"><a href="#cb22-279" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> plot_temp_humidity_by_layer(data, figsize<span class="op">=</span>(<span class="dv">16</span>, <span class="dv">5</span>)):</span>
-<span id="cb22-280"><a href="#cb22-280" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""</span></span>
-<span id="cb22-281"><a href="#cb22-281" aria-hidden="true" tabindex="-1"></a><span class="co">    Plot temperature vs humidity relationship for different canopy layers</span></span>
-<span id="cb22-282"><a href="#cb22-282" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
-<span id="cb22-283"><a href="#cb22-283" aria-hidden="true" tabindex="-1"></a>    fig, axes <span class="op">=</span> plt.subplots(<span class="dv">1</span>, <span class="dv">3</span>, figsize<span class="op">=</span>figsize)</span>
-<span id="cb22-284"><a href="#cb22-284" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-285"><a href="#cb22-285" aria-hidden="true" tabindex="-1"></a>    colors <span class="op">=</span> {<span class="st">'Lower'</span>: <span class="st">'forestgreen'</span>, <span class="st">'Middle'</span>: <span class="st">'orange'</span>, <span class="st">'Upper'</span>: <span class="st">'crimson'</span>}</span>
-<span id="cb22-286"><a href="#cb22-286" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-287"><a href="#cb22-287" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i, layer <span class="kw">in</span> <span class="bu">enumerate</span>([<span class="st">'Lower'</span>, <span class="st">'Middle'</span>, <span class="st">'Upper'</span>]):</span>
-<span id="cb22-288"><a href="#cb22-288" aria-hidden="true" tabindex="-1"></a>        subset <span class="op">=</span> data[data[<span class="st">'canopy_layer'</span>] <span class="op">==</span> layer]</span>
-<span id="cb22-289"><a href="#cb22-289" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb22-290"><a href="#cb22-290" aria-hidden="true" tabindex="-1"></a>        axes[i].hexbin(subset[<span class="st">'humid_temp'</span>], subset[<span class="st">'humidity'</span>], </span>
-<span id="cb22-291"><a href="#cb22-291" aria-hidden="true" tabindex="-1"></a>                       gridsize<span class="op">=</span><span class="dv">30</span>, cmap<span class="op">=</span><span class="st">'YlOrRd'</span>, mincnt<span class="op">=</span><span class="dv">1</span>, alpha<span class="op">=</span><span class="fl">0.8</span>)</span>
-<span id="cb22-292"><a href="#cb22-292" aria-hidden="true" tabindex="-1"></a>        axes[i].set_xlabel(<span class="st">'Temperature (°C)'</span>, fontsize<span class="op">=</span><span class="dv">12</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-293"><a href="#cb22-293" aria-hidden="true" tabindex="-1"></a>        axes[i].set_ylabel(<span class="st">'Relative Humidity (%)'</span>, fontsize<span class="op">=</span><span class="dv">12</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-294"><a href="#cb22-294" aria-hidden="true" tabindex="-1"></a>        axes[i].set_title(<span class="ss">f'</span><span class="sc">{</span>layer<span class="sc">}</span><span class="ss"> Canopy'</span>, fontsize<span class="op">=</span><span class="dv">14</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>, </span>
-<span id="cb22-295"><a href="#cb22-295" aria-hidden="true" tabindex="-1"></a>                         color<span class="op">=</span>colors[layer])</span>
-<span id="cb22-296"><a href="#cb22-296" aria-hidden="true" tabindex="-1"></a>        axes[i].grid(<span class="va">True</span>, alpha<span class="op">=</span><span class="fl">0.3</span>)</span>
-<span id="cb22-297"><a href="#cb22-297" aria-hidden="true" tabindex="-1"></a>        n <span class="op">=</span> <span class="bu">len</span>(subset)</span>
-<span id="cb22-298"><a href="#cb22-298" aria-hidden="true" tabindex="-1"></a>        axes[i].text(<span class="fl">0.05</span>, <span class="fl">0.95</span>, <span class="ss">f'n = </span><span class="sc">{</span>n<span class="sc">:,}</span><span class="ss">'</span>, transform<span class="op">=</span>axes[i].transAxes,</span>
-<span id="cb22-299"><a href="#cb22-299" aria-hidden="true" tabindex="-1"></a>                    fontsize<span class="op">=</span><span class="dv">10</span>, verticalalignment<span class="op">=</span><span class="st">'top'</span>,</span>
-<span id="cb22-300"><a href="#cb22-300" aria-hidden="true" tabindex="-1"></a>                    bbox<span class="op">=</span><span class="bu">dict</span>(boxstyle<span class="op">=</span><span class="st">'round'</span>, facecolor<span class="op">=</span><span class="st">'wheat'</span>, alpha<span class="op">=</span><span class="fl">0.5</span>))</span>
-<span id="cb22-301"><a href="#cb22-301" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-302"><a href="#cb22-302" aria-hidden="true" tabindex="-1"></a>    plt.tight_layout()</span>
-<span id="cb22-303"><a href="#cb22-303" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> fig</span>
-<span id="cb22-304"><a href="#cb22-304" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-305"><a href="#cb22-305" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> plot_temp_humidity_by_layer(analysis_data)</span>
-<span id="cb22-306"><a href="#cb22-306" aria-hidden="true" tabindex="-1"></a>plt.show()</span>
-<span id="cb22-307"><a href="#cb22-307" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
-<span id="cb22-308"><a href="#cb22-308" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-309"><a href="#cb22-309" aria-hidden="true" tabindex="-1"></a>Across all layers, there is a clear negative relationship: as temperature increases, relative humidity decreases. The densest regions (darkest hexes) occur at high humidity and lower temperatures, especially in the Lower Canopy, indicating more frequent cool, moist conditions near the ground. Upper canopy measurements are generally warmer and slightly drier, highlighting consistent vertical microclimatic gradients in temperature and humidity through the forest canopy.</span>
-<span id="cb22-310"><a href="#cb22-310" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-311"><a href="#cb22-311" aria-hidden="true" tabindex="-1"></a><span class="fu">## Finding 2: Temperature Distributions Are Similar Across Canopy Layers</span></span>
-<span id="cb22-314"><a href="#cb22-314" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
-<span id="cb22-315"><a href="#cb22-315" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: finding2-boxplots</span></span>
-<span id="cb22-316"><a href="#cb22-316" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> plot_temperature_by_layer(data, figsize<span class="op">=</span>(<span class="dv">8</span>, <span class="dv">6</span>)):</span>
-<span id="cb22-317"><a href="#cb22-317" aria-hidden="true" tabindex="-1"></a>    <span class="co">""" Box plot showing temperature distribution across canopy layers</span></span>
-<span id="cb22-318"><a href="#cb22-318" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
-<span id="cb22-319"><a href="#cb22-319" aria-hidden="true" tabindex="-1"></a>    fig, ax <span class="op">=</span> plt.subplots(figsize<span class="op">=</span>figsize)</span>
-<span id="cb22-320"><a href="#cb22-320" aria-hidden="true" tabindex="-1"></a>    layers <span class="op">=</span> [<span class="st">'Lower'</span>, <span class="st">'Middle'</span>, <span class="st">'Upper'</span>]</span>
-<span id="cb22-321"><a href="#cb22-321" aria-hidden="true" tabindex="-1"></a>    data_to_plot <span class="op">=</span> [data[data[<span class="st">'canopy_layer'</span>] <span class="op">==</span> layer][<span class="st">'humid_temp'</span>].dropna() </span>
-<span id="cb22-322"><a href="#cb22-322" aria-hidden="true" tabindex="-1"></a>                    <span class="cf">for</span> layer <span class="kw">in</span> layers]</span>
-<span id="cb22-323"><a href="#cb22-323" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-324"><a href="#cb22-324" aria-hidden="true" tabindex="-1"></a>    bp <span class="op">=</span> ax.boxplot(data_to_plot, labels<span class="op">=</span>layers, patch_artist<span class="op">=</span><span class="va">True</span>,</span>
-<span id="cb22-325"><a href="#cb22-325" aria-hidden="true" tabindex="-1"></a>                    boxprops<span class="op">=</span><span class="bu">dict</span>(facecolor<span class="op">=</span><span class="st">'lightcoral'</span>, alpha<span class="op">=</span><span class="fl">0.7</span>),</span>
-<span id="cb22-326"><a href="#cb22-326" aria-hidden="true" tabindex="-1"></a>                    medianprops<span class="op">=</span><span class="bu">dict</span>(color<span class="op">=</span><span class="st">'darkred'</span>, linewidth<span class="op">=</span><span class="dv">2</span>),</span>
-<span id="cb22-327"><a href="#cb22-327" aria-hidden="true" tabindex="-1"></a>                    showmeans<span class="op">=</span><span class="va">True</span>, </span>
-<span id="cb22-328"><a href="#cb22-328" aria-hidden="true" tabindex="-1"></a>                    meanprops<span class="op">=</span><span class="bu">dict</span>(marker<span class="op">=</span><span class="st">'D'</span>, markerfacecolor<span class="op">=</span><span class="st">'blue'</span>, </span>
-<span id="cb22-329"><a href="#cb22-329" aria-hidden="true" tabindex="-1"></a>                                  markeredgecolor<span class="op">=</span><span class="st">'blue'</span>, markersize<span class="op">=</span><span class="dv">8</span>))</span>
-<span id="cb22-330"><a href="#cb22-330" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-331"><a href="#cb22-331" aria-hidden="true" tabindex="-1"></a>    ax.set_xlabel(<span class="st">'Canopy Layer'</span>, fontsize<span class="op">=</span><span class="dv">13</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-332"><a href="#cb22-332" aria-hidden="true" tabindex="-1"></a>    ax.set_ylabel(<span class="st">'Temperature (°C)'</span>, fontsize<span class="op">=</span><span class="dv">13</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-333"><a href="#cb22-333" aria-hidden="true" tabindex="-1"></a>    ax.set_title(<span class="st">'Temperature Distribution by Canopy Layer'</span>, </span>
-<span id="cb22-334"><a href="#cb22-334" aria-hidden="true" tabindex="-1"></a>                 fontsize<span class="op">=</span><span class="dv">15</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-335"><a href="#cb22-335" aria-hidden="true" tabindex="-1"></a>    ax.grid(<span class="va">True</span>, alpha<span class="op">=</span><span class="fl">0.3</span>, axis<span class="op">=</span><span class="st">'y'</span>)</span>
-<span id="cb22-336"><a href="#cb22-336" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i, layer <span class="kw">in</span> <span class="bu">enumerate</span>(layers):</span>
-<span id="cb22-337"><a href="#cb22-337" aria-hidden="true" tabindex="-1"></a>        n <span class="op">=</span> <span class="bu">len</span>(data_to_plot[i])</span>
-<span id="cb22-338"><a href="#cb22-338" aria-hidden="true" tabindex="-1"></a>        ax.text(i<span class="op">+</span><span class="dv">1</span>, ax.get_ylim()[<span class="dv">0</span>] <span class="op">+</span> <span class="fl">0.5</span>, <span class="ss">f'n=</span><span class="sc">{</span>n<span class="sc">:,}</span><span class="ss">'</span>, </span>
-<span id="cb22-339"><a href="#cb22-339" aria-hidden="true" tabindex="-1"></a>               ha<span class="op">=</span><span class="st">'center'</span>, va<span class="op">=</span><span class="st">'bottom'</span>, fontsize<span class="op">=</span><span class="dv">9</span>)</span>
-<span id="cb22-340"><a href="#cb22-340" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-341"><a href="#cb22-341" aria-hidden="true" tabindex="-1"></a>    plt.tight_layout()</span>
-<span id="cb22-342"><a href="#cb22-342" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> fig</span>
-<span id="cb22-343"><a href="#cb22-343" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-344"><a href="#cb22-344" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> plot_temperature_by_layer(analysis_data)</span>
-<span id="cb22-345"><a href="#cb22-345" aria-hidden="true" tabindex="-1"></a>plt.show()</span>
-<span id="cb22-346"><a href="#cb22-346" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
-<span id="cb22-347"><a href="#cb22-347" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-348"><a href="#cb22-348" aria-hidden="true" tabindex="-1"></a>The box plots reveal a surprising result: despite being separated by up to 55 meters vertically and experiencing vastly different light environments, all three canopy layers show similar temperature distributions. The median temperatures (red lines) are approximately 15°C for all three layers, and the interquartile ranges (boxes) overlap substantially.</span>
-<span id="cb22-349"><a href="#cb22-349" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-350"><a href="#cb22-350" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-279"><a href="#cb22-279" aria-hidden="true" tabindex="-1"></a><span class="fu">### 2. Invalid Voltage Readings</span></span>
+<span id="cb22-280"><a href="#cb22-280" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-281"><a href="#cb22-281" aria-hidden="true" tabindex="-1"></a>We filtered data to retain only readings with voltage between 0-4V. While the typical operating range for these sensors is 2.4-3.0V (shown as dotted green/blue lines in the plots). Values outside 0-4V represent sensor malfunctions or data corruption.</span>
+<span id="cb22-282"><a href="#cb22-282" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-283"><a href="#cb22-283" aria-hidden="true" tabindex="-1"></a><span class="fu">### 3. Impossible Physical Values</span></span>
+<span id="cb22-284"><a href="#cb22-284" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-285"><a href="#cb22-285" aria-hidden="true" tabindex="-1"></a>We removed readings that violated physical constraints:</span>
+<span id="cb22-286"><a href="#cb22-286" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Humidity outside 0-100% (relative humidity cannot exceed saturation or be negative)</span>
+<span id="cb22-287"><a href="#cb22-287" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Temperature outside -20°C to 50°C (far outside the range possible in coastal California)</span>
+<span id="cb22-288"><a href="#cb22-288" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Negative PAR values (light intensity cannot be negative)</span>
+<span id="cb22-289"><a href="#cb22-289" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-290"><a href="#cb22-290" aria-hidden="true" tabindex="-1"></a><span class="fu">### 4. Duplicate Measurements</span></span>
+<span id="cb22-291"><a href="#cb22-291" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-292"><a href="#cb22-292" aria-hidden="true" tabindex="-1"></a>After merging the network and log datasets, some measurements appeared twice. We removed duplicates by identifying measurements with matching sensor ID, timestamp, and measurement period, keeping only the first occurrence. </span>
+<span id="cb22-293"><a href="#cb22-293" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-294"><a href="#cb22-294" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-295"><a href="#cb22-295" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-296"><a href="#cb22-296" aria-hidden="true" tabindex="-1"></a><span class="fu"># Exploratory Data Analysis</span></span>
+<span id="cb22-299"><a href="#cb22-299" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
+<span id="cb22-300"><a href="#cb22-300" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: prepare-analysis</span></span>
+<span id="cb22-301"><a href="#cb22-301" aria-hidden="true" tabindex="-1"></a><span class="co"># Prepare analysis-ready dataset with canopy layers</span></span>
+<span id="cb22-302"><a href="#cb22-302" aria-hidden="true" tabindex="-1"></a>analysis_data <span class="op">=</span> prepare_analysis_data(redwood_all_df, motes_df)</span>
+<span id="cb22-303"><a href="#cb22-303" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-304"><a href="#cb22-304" aria-hidden="true" tabindex="-1"></a><span class="co"># Display layer statistics</span></span>
+<span id="cb22-305"><a href="#cb22-305" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"=== OBSERVATIONS BY CANOPY LAYER ==="</span>)</span>
+<span id="cb22-306"><a href="#cb22-306" aria-hidden="true" tabindex="-1"></a>layer_counts <span class="op">=</span> analysis_data.groupby(<span class="st">'canopy_layer'</span>).size()</span>
+<span id="cb22-307"><a href="#cb22-307" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> layer <span class="kw">in</span> [<span class="st">'Lower'</span>, <span class="st">'Middle'</span>, <span class="st">'Upper'</span>]:</span>
+<span id="cb22-308"><a href="#cb22-308" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"</span><span class="sc">{</span>layer<span class="sc">}</span><span class="ss"> canopy: </span><span class="sc">{</span>layer_counts[layer]<span class="sc">:,}</span><span class="ss"> observations"</span>)</span>
+<span id="cb22-309"><a href="#cb22-309" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-310"><a href="#cb22-310" aria-hidden="true" tabindex="-1"></a><span class="co"># Temperature-humidity statistics by layer</span></span>
+<span id="cb22-311"><a href="#cb22-311" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"</span><span class="ch">\n</span><span class="st">=== TEMPERATURE-HUMIDITY STATISTICS BY LAYER ==="</span>)</span>
+<span id="cb22-312"><a href="#cb22-312" aria-hidden="true" tabindex="-1"></a>layer_stats <span class="op">=</span> analysis_data.groupby(<span class="st">'canopy_layer'</span>).agg({</span>
+<span id="cb22-313"><a href="#cb22-313" aria-hidden="true" tabindex="-1"></a>    <span class="st">'humid_temp'</span>: [<span class="st">'mean'</span>, <span class="st">'std'</span>],</span>
+<span id="cb22-314"><a href="#cb22-314" aria-hidden="true" tabindex="-1"></a>    <span class="st">'humidity'</span>: [<span class="st">'mean'</span>, <span class="st">'std'</span>]</span>
+<span id="cb22-315"><a href="#cb22-315" aria-hidden="true" tabindex="-1"></a>}).<span class="bu">round</span>(<span class="dv">2</span>)</span>
+<span id="cb22-316"><a href="#cb22-316" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(layer_stats)</span>
+<span id="cb22-317"><a href="#cb22-317" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb22-318"><a href="#cb22-318" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-319"><a href="#cb22-319" aria-hidden="true" tabindex="-1"></a><span class="fu">## Finding 1: Temperature-Humidity Relationships Differ by Canopy Layer</span></span>
+<span id="cb22-322"><a href="#cb22-322" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
+<span id="cb22-323"><a href="#cb22-323" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: finding1-hexbin</span></span>
+<span id="cb22-324"><a href="#cb22-324" aria-hidden="true" tabindex="-1"></a><span class="co">#| fig-cap: "Temperature-humidity relationships across three canopy layers. Each panel shows hexbin density plots where darker red colors indicate higher density of observations. The upper canopy shows a clear inverse relationship between temperature and humidity, while the lower canopy shows a more diffuse pattern with points scattered throughout the parameter space."</span></span>
+<span id="cb22-325"><a href="#cb22-325" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-326"><a href="#cb22-326" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> plot_temp_humidity_by_layer(data, figsize<span class="op">=</span>(<span class="dv">16</span>, <span class="dv">5</span>)):</span>
+<span id="cb22-327"><a href="#cb22-327" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""</span></span>
+<span id="cb22-328"><a href="#cb22-328" aria-hidden="true" tabindex="-1"></a><span class="co">    Plot temperature vs humidity relationship for different canopy layers</span></span>
+<span id="cb22-329"><a href="#cb22-329" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
+<span id="cb22-330"><a href="#cb22-330" aria-hidden="true" tabindex="-1"></a>    fig, axes <span class="op">=</span> plt.subplots(<span class="dv">1</span>, <span class="dv">3</span>, figsize<span class="op">=</span>figsize)</span>
+<span id="cb22-331"><a href="#cb22-331" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-332"><a href="#cb22-332" aria-hidden="true" tabindex="-1"></a>    colors <span class="op">=</span> {<span class="st">'Lower'</span>: <span class="st">'forestgreen'</span>, <span class="st">'Middle'</span>: <span class="st">'orange'</span>, <span class="st">'Upper'</span>: <span class="st">'crimson'</span>}</span>
+<span id="cb22-333"><a href="#cb22-333" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-334"><a href="#cb22-334" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i, layer <span class="kw">in</span> <span class="bu">enumerate</span>([<span class="st">'Lower'</span>, <span class="st">'Middle'</span>, <span class="st">'Upper'</span>]):</span>
+<span id="cb22-335"><a href="#cb22-335" aria-hidden="true" tabindex="-1"></a>        subset <span class="op">=</span> data[data[<span class="st">'canopy_layer'</span>] <span class="op">==</span> layer]</span>
+<span id="cb22-336"><a href="#cb22-336" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb22-337"><a href="#cb22-337" aria-hidden="true" tabindex="-1"></a>        axes[i].hexbin(subset[<span class="st">'humid_temp'</span>], subset[<span class="st">'humidity'</span>], </span>
+<span id="cb22-338"><a href="#cb22-338" aria-hidden="true" tabindex="-1"></a>                       gridsize<span class="op">=</span><span class="dv">30</span>, cmap<span class="op">=</span><span class="st">'YlOrRd'</span>, mincnt<span class="op">=</span><span class="dv">1</span>, alpha<span class="op">=</span><span class="fl">0.8</span>)</span>
+<span id="cb22-339"><a href="#cb22-339" aria-hidden="true" tabindex="-1"></a>        axes[i].set_xlabel(<span class="st">'Temperature (°C)'</span>, fontsize<span class="op">=</span><span class="dv">12</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-340"><a href="#cb22-340" aria-hidden="true" tabindex="-1"></a>        axes[i].set_ylabel(<span class="st">'Relative Humidity (%)'</span>, fontsize<span class="op">=</span><span class="dv">12</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-341"><a href="#cb22-341" aria-hidden="true" tabindex="-1"></a>        axes[i].set_title(<span class="ss">f'</span><span class="sc">{</span>layer<span class="sc">}</span><span class="ss"> Canopy'</span>, fontsize<span class="op">=</span><span class="dv">14</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>, </span>
+<span id="cb22-342"><a href="#cb22-342" aria-hidden="true" tabindex="-1"></a>                         color<span class="op">=</span>colors[layer])</span>
+<span id="cb22-343"><a href="#cb22-343" aria-hidden="true" tabindex="-1"></a>        axes[i].grid(<span class="va">True</span>, alpha<span class="op">=</span><span class="fl">0.3</span>)</span>
+<span id="cb22-344"><a href="#cb22-344" aria-hidden="true" tabindex="-1"></a>        n <span class="op">=</span> <span class="bu">len</span>(subset)</span>
+<span id="cb22-345"><a href="#cb22-345" aria-hidden="true" tabindex="-1"></a>        axes[i].text(<span class="fl">0.05</span>, <span class="fl">0.95</span>, <span class="ss">f'n = </span><span class="sc">{</span>n<span class="sc">:,}</span><span class="ss">'</span>, transform<span class="op">=</span>axes[i].transAxes,</span>
+<span id="cb22-346"><a href="#cb22-346" aria-hidden="true" tabindex="-1"></a>                    fontsize<span class="op">=</span><span class="dv">10</span>, verticalalignment<span class="op">=</span><span class="st">'top'</span>,</span>
+<span id="cb22-347"><a href="#cb22-347" aria-hidden="true" tabindex="-1"></a>                    bbox<span class="op">=</span><span class="bu">dict</span>(boxstyle<span class="op">=</span><span class="st">'round'</span>, facecolor<span class="op">=</span><span class="st">'wheat'</span>, alpha<span class="op">=</span><span class="fl">0.5</span>))</span>
+<span id="cb22-348"><a href="#cb22-348" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-349"><a href="#cb22-349" aria-hidden="true" tabindex="-1"></a>    plt.tight_layout()</span>
+<span id="cb22-350"><a href="#cb22-350" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> fig</span>
 <span id="cb22-351"><a href="#cb22-351" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-352"><a href="#cb22-352" aria-hidden="true" tabindex="-1"></a><span class="fu">## Finding 3: Height Influences Temperature-Humidity Coupling Strength</span></span>
-<span id="cb22-355"><a href="#cb22-355" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
-<span id="cb22-356"><a href="#cb22-356" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> plot_temp_vs_humidity_by_height(data, figsize<span class="op">=</span>(<span class="dv">10</span>, <span class="dv">8</span>)):</span>
-<span id="cb22-357"><a href="#cb22-357" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""</span></span>
-<span id="cb22-358"><a href="#cb22-358" aria-hidden="true" tabindex="-1"></a><span class="co">    Scatter plot of temperature vs humidity colored by height</span></span>
-<span id="cb22-359"><a href="#cb22-359" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
-<span id="cb22-360"><a href="#cb22-360" aria-hidden="true" tabindex="-1"></a>    fig, ax <span class="op">=</span> plt.subplots(figsize<span class="op">=</span>figsize)</span>
-<span id="cb22-361"><a href="#cb22-361" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-362"><a href="#cb22-362" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-363"><a href="#cb22-363" aria-hidden="true" tabindex="-1"></a>    <span class="co">#sample = data.sample(n=min(5000, len(data)), random_state=42)</span></span>
-<span id="cb22-364"><a href="#cb22-364" aria-hidden="true" tabindex="-1"></a>    sample<span class="op">=</span> data</span>
-<span id="cb22-365"><a href="#cb22-365" aria-hidden="true" tabindex="-1"></a>    scatter <span class="op">=</span> ax.scatter(sample[<span class="st">'humid_temp'</span>], sample[<span class="st">'humidity'</span>], </span>
-<span id="cb22-366"><a href="#cb22-366" aria-hidden="true" tabindex="-1"></a>                        c<span class="op">=</span>sample[<span class="st">'Height'</span>], cmap<span class="op">=</span><span class="st">'viridis'</span>, </span>
-<span id="cb22-367"><a href="#cb22-367" aria-hidden="true" tabindex="-1"></a>                        alpha<span class="op">=</span><span class="fl">0.6</span>, s<span class="op">=</span><span class="dv">20</span>, edgecolors<span class="op">=</span><span class="st">'none'</span>)</span>
-<span id="cb22-368"><a href="#cb22-368" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-369"><a href="#cb22-369" aria-hidden="true" tabindex="-1"></a>    ax.set_xlabel(<span class="st">'Temperature (°C)'</span>, fontsize<span class="op">=</span><span class="dv">13</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-370"><a href="#cb22-370" aria-hidden="true" tabindex="-1"></a>    ax.set_ylabel(<span class="st">'Relative Humidity (%)'</span>, fontsize<span class="op">=</span><span class="dv">13</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-371"><a href="#cb22-371" aria-hidden="true" tabindex="-1"></a>    ax.set_title(<span class="st">'Temperature-Humidity Relationship by Canopy Height'</span>, </span>
-<span id="cb22-372"><a href="#cb22-372" aria-hidden="true" tabindex="-1"></a>                 fontsize<span class="op">=</span><span class="dv">15</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-373"><a href="#cb22-373" aria-hidden="true" tabindex="-1"></a>    ax.grid(<span class="va">True</span>, alpha<span class="op">=</span><span class="fl">0.3</span>)</span>
-<span id="cb22-374"><a href="#cb22-374" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-375"><a href="#cb22-375" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Colorbar</span></span>
-<span id="cb22-376"><a href="#cb22-376" aria-hidden="true" tabindex="-1"></a>    cbar <span class="op">=</span> plt.colorbar(scatter, ax<span class="op">=</span>ax)</span>
-<span id="cb22-377"><a href="#cb22-377" aria-hidden="true" tabindex="-1"></a>    cbar.set_label(<span class="st">'Height Above Ground (m)'</span>, fontsize<span class="op">=</span><span class="dv">12</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-378"><a href="#cb22-378" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-379"><a href="#cb22-379" aria-hidden="true" tabindex="-1"></a>    plt.tight_layout()</span>
-<span id="cb22-380"><a href="#cb22-380" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> fig</span>
-<span id="cb22-381"><a href="#cb22-381" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-382"><a href="#cb22-382" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> plot_temp_vs_humidity_by_height(analysis_data)</span>
-<span id="cb22-383"><a href="#cb22-383" aria-hidden="true" tabindex="-1"></a>plt.show()</span>
-<span id="cb22-384"><a href="#cb22-384" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
-<span id="cb22-385"><a href="#cb22-385" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-386"><a href="#cb22-386" aria-hidden="true" tabindex="-1"></a>Relative humidity decreases when temperature increases, showing a clear inverse relationship between these two variables. Point color indicates height above ground, revealing that measurements from higher canopy layers tend to be slightly warmer and drier, while lower layers are cooler and more humid. This pattern highlights a vertical microclimatic gradient within the forest canopy, with lower layers experiencing more moisture and variability, and upper layers being drier and thermally more stable.</span>
-<span id="cb22-387"><a href="#cb22-387" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-388"><a href="#cb22-388" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-389"><a href="#cb22-389" aria-hidden="true" tabindex="-1"></a><span class="fu">## Finding 4: Humidity Relationship with Height</span></span>
-<span id="cb22-392"><a href="#cb22-392" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
-<span id="cb22-393"><a href="#cb22-393" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: finding4-humidity-height</span></span>
-<span id="cb22-394"><a href="#cb22-394" aria-hidden="true" tabindex="-1"></a><span class="co">#| fig-cap: "Relationship between canopy height and relative humidity. Each point represents a single measurement, colored by temperature. The clear downward trend shows that humidity systematically decreases with increasing height above ground."</span></span>
-<span id="cb22-395"><a href="#cb22-395" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-396"><a href="#cb22-396" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> plot_humidity_vs_height(data, figsize<span class="op">=</span>(<span class="dv">8</span>, <span class="dv">7</span>)):</span>
-<span id="cb22-397"><a href="#cb22-397" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""</span></span>
-<span id="cb22-398"><a href="#cb22-398" aria-hidden="true" tabindex="-1"></a><span class="co">    Simple scatter plot of humidity vs height</span></span>
-<span id="cb22-399"><a href="#cb22-399" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
-<span id="cb22-400"><a href="#cb22-400" aria-hidden="true" tabindex="-1"></a>    fig, ax <span class="op">=</span> plt.subplots(figsize<span class="op">=</span>figsize)</span>
-<span id="cb22-401"><a href="#cb22-401" aria-hidden="true" tabindex="-1"></a>    sample <span class="op">=</span> data.sample(n<span class="op">=</span><span class="bu">min</span>(<span class="dv">3000</span>, <span class="bu">len</span>(data)), random_state<span class="op">=</span><span class="dv">42</span>)</span>
-<span id="cb22-402"><a href="#cb22-402" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-403"><a href="#cb22-403" aria-hidden="true" tabindex="-1"></a>    scatter <span class="op">=</span> ax.scatter(sample[<span class="st">'humidity'</span>], sample[<span class="st">'Height'</span>], </span>
-<span id="cb22-404"><a href="#cb22-404" aria-hidden="true" tabindex="-1"></a>                        c<span class="op">=</span>sample[<span class="st">'humid_temp'</span>], cmap<span class="op">=</span><span class="st">'coolwarm'</span>, </span>
-<span id="cb22-405"><a href="#cb22-405" aria-hidden="true" tabindex="-1"></a>                        alpha<span class="op">=</span><span class="fl">0.5</span>, s<span class="op">=</span><span class="dv">15</span>, edgecolors<span class="op">=</span><span class="st">'none'</span>)</span>
-<span id="cb22-406"><a href="#cb22-406" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-407"><a href="#cb22-407" aria-hidden="true" tabindex="-1"></a>    ax.set_xlabel(<span class="st">'Relative Humidity (%)'</span>, fontsize<span class="op">=</span><span class="dv">13</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-408"><a href="#cb22-408" aria-hidden="true" tabindex="-1"></a>    ax.set_ylabel(<span class="st">'Height Above Ground (m)'</span>, fontsize<span class="op">=</span><span class="dv">13</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-409"><a href="#cb22-409" aria-hidden="true" tabindex="-1"></a>    ax.set_title(<span class="st">'Humidity Decreases with Canopy Height'</span>, </span>
-<span id="cb22-410"><a href="#cb22-410" aria-hidden="true" tabindex="-1"></a>                 fontsize<span class="op">=</span><span class="dv">15</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-411"><a href="#cb22-411" aria-hidden="true" tabindex="-1"></a>    ax.grid(<span class="va">True</span>, alpha<span class="op">=</span><span class="fl">0.3</span>)</span>
-<span id="cb22-412"><a href="#cb22-412" aria-hidden="true" tabindex="-1"></a>    cbar <span class="op">=</span> plt.colorbar(scatter, ax<span class="op">=</span>ax)</span>
-<span id="cb22-413"><a href="#cb22-413" aria-hidden="true" tabindex="-1"></a>    cbar.set_label(<span class="st">'Temperature (°C)'</span>, fontsize<span class="op">=</span><span class="dv">12</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-414"><a href="#cb22-414" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-415"><a href="#cb22-415" aria-hidden="true" tabindex="-1"></a>    plt.tight_layout()</span>
-<span id="cb22-416"><a href="#cb22-416" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> fig</span>
-<span id="cb22-417"><a href="#cb22-417" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-418"><a href="#cb22-418" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> plot_humidity_vs_height(analysis_data)</span>
-<span id="cb22-419"><a href="#cb22-419" aria-hidden="true" tabindex="-1"></a>plt.show()</span>
-<span id="cb22-420"><a href="#cb22-420" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
-<span id="cb22-421"><a href="#cb22-421" aria-hidden="true" tabindex="-1"></a>As canopy height increases, relative humidity tends to decrease and temperature tends to cool, reflecting microclimatic changes through the forest vertical structure. Lower layers are warmer and more variable in moisture, while upper layers are cooler and slightly drier.</span>
-<span id="cb22-422"><a href="#cb22-422" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-423"><a href="#cb22-423" aria-hidden="true" tabindex="-1"></a><span class="fu">## Finding 5: Humidity Distributions by Canopy Layer</span></span>
-<span id="cb22-424"><a href="#cb22-424" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-425"><a href="#cb22-425" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-426"><a href="#cb22-426" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-429"><a href="#cb22-429" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
-<span id="cb22-430"><a href="#cb22-430" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> plot_humidity_violins(data, figsize<span class="op">=</span>(<span class="dv">8</span>, <span class="dv">6</span>)):</span>
-<span id="cb22-431"><a href="#cb22-431" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""</span></span>
-<span id="cb22-432"><a href="#cb22-432" aria-hidden="true" tabindex="-1"></a><span class="co">    Violin plot of humidity by canancy layer</span></span>
-<span id="cb22-433"><a href="#cb22-433" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
-<span id="cb22-434"><a href="#cb22-434" aria-hidden="true" tabindex="-1"></a>    <span class="im">import</span> matplotlib.pyplot <span class="im">as</span> plt  <span class="co"># Move import to TOP</span></span>
-<span id="cb22-435"><a href="#cb22-435" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-436"><a href="#cb22-436" aria-hidden="true" tabindex="-1"></a>    fig, ax <span class="op">=</span> plt.subplots(figsize<span class="op">=</span>figsize)</span>
-<span id="cb22-437"><a href="#cb22-437" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-438"><a href="#cb22-438" aria-hidden="true" tabindex="-1"></a>    layers <span class="op">=</span> [<span class="st">'Lower'</span>, <span class="st">'Middle'</span>, <span class="st">'Upper'</span>]</span>
-<span id="cb22-439"><a href="#cb22-439" aria-hidden="true" tabindex="-1"></a>    data_to_plot <span class="op">=</span> [data[data[<span class="st">'canopy_layer'</span>] <span class="op">==</span> layer][<span class="st">'humidity'</span>].dropna().values </span>
-<span id="cb22-440"><a href="#cb22-440" aria-hidden="true" tabindex="-1"></a>                    <span class="cf">for</span> layer <span class="kw">in</span> layers]</span>
-<span id="cb22-441"><a href="#cb22-441" aria-hidden="true" tabindex="-1"></a>    colors <span class="op">=</span> [<span class="st">'forestgreen'</span>, <span class="st">'orange'</span>, <span class="st">'pink'</span>]</span>
-<span id="cb22-442"><a href="#cb22-442" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-443"><a href="#cb22-443" aria-hidden="true" tabindex="-1"></a>    parts <span class="op">=</span> ax.violinplot(data_to_plot, positions<span class="op">=</span>[<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>], </span>
-<span id="cb22-444"><a href="#cb22-444" aria-hidden="true" tabindex="-1"></a>                          showmeans<span class="op">=</span><span class="va">True</span>, showmedians<span class="op">=</span><span class="va">True</span>, widths<span class="op">=</span><span class="fl">0.7</span>)</span>
-<span id="cb22-445"><a href="#cb22-445" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-446"><a href="#cb22-446" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i, pc <span class="kw">in</span> <span class="bu">enumerate</span>(parts[<span class="st">'bodies'</span>]):</span>
-<span id="cb22-447"><a href="#cb22-447" aria-hidden="true" tabindex="-1"></a>        pc.set_facecolor(colors[i])</span>
-<span id="cb22-448"><a href="#cb22-448" aria-hidden="true" tabindex="-1"></a>        pc.set_alpha(<span class="fl">0.5</span>)</span>
+<span id="cb22-352"><a href="#cb22-352" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> plot_temp_humidity_by_layer(analysis_data)</span>
+<span id="cb22-353"><a href="#cb22-353" aria-hidden="true" tabindex="-1"></a>plt.show()</span>
+<span id="cb22-354"><a href="#cb22-354" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb22-355"><a href="#cb22-355" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-356"><a href="#cb22-356" aria-hidden="true" tabindex="-1"></a>Across all layers, there is a clear negative relationship: as temperature increases, relative humidity decreases. The densest regions (darkest hexes) occur at high humidity and lower temperatures, especially in the Lower Canopy, indicating more frequent cool, moist conditions near the ground. Upper canopy measurements are generally warmer and slightly drier, highlighting consistent vertical microclimatic gradients in temperature and humidity through the forest canopy.</span>
+<span id="cb22-357"><a href="#cb22-357" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-358"><a href="#cb22-358" aria-hidden="true" tabindex="-1"></a><span class="fu">## Finding 2: Temperature Distributions Are Similar Across Canopy Layers</span></span>
+<span id="cb22-361"><a href="#cb22-361" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
+<span id="cb22-362"><a href="#cb22-362" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: finding2-boxplots</span></span>
+<span id="cb22-363"><a href="#cb22-363" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> plot_temperature_by_layer(data, figsize<span class="op">=</span>(<span class="dv">8</span>, <span class="dv">6</span>)):</span>
+<span id="cb22-364"><a href="#cb22-364" aria-hidden="true" tabindex="-1"></a>    <span class="co">""" Box plot showing temperature distribution across canopy layers</span></span>
+<span id="cb22-365"><a href="#cb22-365" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
+<span id="cb22-366"><a href="#cb22-366" aria-hidden="true" tabindex="-1"></a>    fig, ax <span class="op">=</span> plt.subplots(figsize<span class="op">=</span>figsize)</span>
+<span id="cb22-367"><a href="#cb22-367" aria-hidden="true" tabindex="-1"></a>    layers <span class="op">=</span> [<span class="st">'Lower'</span>, <span class="st">'Middle'</span>, <span class="st">'Upper'</span>]</span>
+<span id="cb22-368"><a href="#cb22-368" aria-hidden="true" tabindex="-1"></a>    data_to_plot <span class="op">=</span> [data[data[<span class="st">'canopy_layer'</span>] <span class="op">==</span> layer][<span class="st">'humid_temp'</span>].dropna() </span>
+<span id="cb22-369"><a href="#cb22-369" aria-hidden="true" tabindex="-1"></a>                    <span class="cf">for</span> layer <span class="kw">in</span> layers]</span>
+<span id="cb22-370"><a href="#cb22-370" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-371"><a href="#cb22-371" aria-hidden="true" tabindex="-1"></a>    bp <span class="op">=</span> ax.boxplot(data_to_plot, labels<span class="op">=</span>layers, patch_artist<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb22-372"><a href="#cb22-372" aria-hidden="true" tabindex="-1"></a>                    boxprops<span class="op">=</span><span class="bu">dict</span>(facecolor<span class="op">=</span><span class="st">'lightcoral'</span>, alpha<span class="op">=</span><span class="fl">0.7</span>),</span>
+<span id="cb22-373"><a href="#cb22-373" aria-hidden="true" tabindex="-1"></a>                    medianprops<span class="op">=</span><span class="bu">dict</span>(color<span class="op">=</span><span class="st">'darkred'</span>, linewidth<span class="op">=</span><span class="dv">2</span>),</span>
+<span id="cb22-374"><a href="#cb22-374" aria-hidden="true" tabindex="-1"></a>                    showmeans<span class="op">=</span><span class="va">True</span>, </span>
+<span id="cb22-375"><a href="#cb22-375" aria-hidden="true" tabindex="-1"></a>                    meanprops<span class="op">=</span><span class="bu">dict</span>(marker<span class="op">=</span><span class="st">'D'</span>, markerfacecolor<span class="op">=</span><span class="st">'blue'</span>, </span>
+<span id="cb22-376"><a href="#cb22-376" aria-hidden="true" tabindex="-1"></a>                                  markeredgecolor<span class="op">=</span><span class="st">'blue'</span>, markersize<span class="op">=</span><span class="dv">8</span>))</span>
+<span id="cb22-377"><a href="#cb22-377" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-378"><a href="#cb22-378" aria-hidden="true" tabindex="-1"></a>    ax.set_xlabel(<span class="st">'Canopy Layer'</span>, fontsize<span class="op">=</span><span class="dv">13</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-379"><a href="#cb22-379" aria-hidden="true" tabindex="-1"></a>    ax.set_ylabel(<span class="st">'Temperature (°C)'</span>, fontsize<span class="op">=</span><span class="dv">13</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-380"><a href="#cb22-380" aria-hidden="true" tabindex="-1"></a>    ax.set_title(<span class="st">'Temperature Distribution by Canopy Layer'</span>, </span>
+<span id="cb22-381"><a href="#cb22-381" aria-hidden="true" tabindex="-1"></a>                 fontsize<span class="op">=</span><span class="dv">15</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-382"><a href="#cb22-382" aria-hidden="true" tabindex="-1"></a>    ax.grid(<span class="va">True</span>, alpha<span class="op">=</span><span class="fl">0.3</span>, axis<span class="op">=</span><span class="st">'y'</span>)</span>
+<span id="cb22-383"><a href="#cb22-383" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i, layer <span class="kw">in</span> <span class="bu">enumerate</span>(layers):</span>
+<span id="cb22-384"><a href="#cb22-384" aria-hidden="true" tabindex="-1"></a>        n <span class="op">=</span> <span class="bu">len</span>(data_to_plot[i])</span>
+<span id="cb22-385"><a href="#cb22-385" aria-hidden="true" tabindex="-1"></a>        ax.text(i<span class="op">+</span><span class="dv">1</span>, ax.get_ylim()[<span class="dv">0</span>] <span class="op">+</span> <span class="fl">0.5</span>, <span class="ss">f'n=</span><span class="sc">{</span>n<span class="sc">:,}</span><span class="ss">'</span>, </span>
+<span id="cb22-386"><a href="#cb22-386" aria-hidden="true" tabindex="-1"></a>               ha<span class="op">=</span><span class="st">'center'</span>, va<span class="op">=</span><span class="st">'bottom'</span>, fontsize<span class="op">=</span><span class="dv">9</span>)</span>
+<span id="cb22-387"><a href="#cb22-387" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-388"><a href="#cb22-388" aria-hidden="true" tabindex="-1"></a>    plt.tight_layout()</span>
+<span id="cb22-389"><a href="#cb22-389" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> fig</span>
+<span id="cb22-390"><a href="#cb22-390" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-391"><a href="#cb22-391" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> plot_temperature_by_layer(analysis_data)</span>
+<span id="cb22-392"><a href="#cb22-392" aria-hidden="true" tabindex="-1"></a>plt.show()</span>
+<span id="cb22-393"><a href="#cb22-393" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb22-394"><a href="#cb22-394" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-395"><a href="#cb22-395" aria-hidden="true" tabindex="-1"></a>The box plots reveal a surprising result: despite being separated by up to 55 meters vertically and experiencing vastly different light environments, all three canopy layers show similar temperature distributions. The median temperatures (red lines) are approximately 15°C for all three layers, and the interquartile ranges (boxes) overlap substantially.</span>
+<span id="cb22-396"><a href="#cb22-396" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-397"><a href="#cb22-397" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-398"><a href="#cb22-398" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-399"><a href="#cb22-399" aria-hidden="true" tabindex="-1"></a><span class="fu">## Finding 3: Height Influences Temperature-Humidity Coupling Strength</span></span>
+<span id="cb22-402"><a href="#cb22-402" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
+<span id="cb22-403"><a href="#cb22-403" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> plot_temp_vs_humidity_by_height(data, figsize<span class="op">=</span>(<span class="dv">10</span>, <span class="dv">8</span>)):</span>
+<span id="cb22-404"><a href="#cb22-404" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""</span></span>
+<span id="cb22-405"><a href="#cb22-405" aria-hidden="true" tabindex="-1"></a><span class="co">    Scatter plot of temperature vs humidity colored by height</span></span>
+<span id="cb22-406"><a href="#cb22-406" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
+<span id="cb22-407"><a href="#cb22-407" aria-hidden="true" tabindex="-1"></a>    fig, ax <span class="op">=</span> plt.subplots(figsize<span class="op">=</span>figsize)</span>
+<span id="cb22-408"><a href="#cb22-408" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-409"><a href="#cb22-409" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-410"><a href="#cb22-410" aria-hidden="true" tabindex="-1"></a>    <span class="co">#sample = data.sample(n=min(5000, len(data)), random_state=42)</span></span>
+<span id="cb22-411"><a href="#cb22-411" aria-hidden="true" tabindex="-1"></a>    sample<span class="op">=</span> data</span>
+<span id="cb22-412"><a href="#cb22-412" aria-hidden="true" tabindex="-1"></a>    scatter <span class="op">=</span> ax.scatter(sample[<span class="st">'humid_temp'</span>], sample[<span class="st">'humidity'</span>], </span>
+<span id="cb22-413"><a href="#cb22-413" aria-hidden="true" tabindex="-1"></a>                        c<span class="op">=</span>sample[<span class="st">'Height'</span>], cmap<span class="op">=</span><span class="st">'viridis'</span>, </span>
+<span id="cb22-414"><a href="#cb22-414" aria-hidden="true" tabindex="-1"></a>                        alpha<span class="op">=</span><span class="fl">0.6</span>, s<span class="op">=</span><span class="dv">20</span>, edgecolors<span class="op">=</span><span class="st">'none'</span>)</span>
+<span id="cb22-415"><a href="#cb22-415" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-416"><a href="#cb22-416" aria-hidden="true" tabindex="-1"></a>    ax.set_xlabel(<span class="st">'Temperature (°C)'</span>, fontsize<span class="op">=</span><span class="dv">13</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-417"><a href="#cb22-417" aria-hidden="true" tabindex="-1"></a>    ax.set_ylabel(<span class="st">'Relative Humidity (%)'</span>, fontsize<span class="op">=</span><span class="dv">13</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-418"><a href="#cb22-418" aria-hidden="true" tabindex="-1"></a>    ax.set_title(<span class="st">'Temperature-Humidity Relationship by Canopy Height'</span>, </span>
+<span id="cb22-419"><a href="#cb22-419" aria-hidden="true" tabindex="-1"></a>                 fontsize<span class="op">=</span><span class="dv">15</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-420"><a href="#cb22-420" aria-hidden="true" tabindex="-1"></a>    ax.grid(<span class="va">True</span>, alpha<span class="op">=</span><span class="fl">0.3</span>)</span>
+<span id="cb22-421"><a href="#cb22-421" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-422"><a href="#cb22-422" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Colorbar</span></span>
+<span id="cb22-423"><a href="#cb22-423" aria-hidden="true" tabindex="-1"></a>    cbar <span class="op">=</span> plt.colorbar(scatter, ax<span class="op">=</span>ax)</span>
+<span id="cb22-424"><a href="#cb22-424" aria-hidden="true" tabindex="-1"></a>    cbar.set_label(<span class="st">'Height Above Ground (m)'</span>, fontsize<span class="op">=</span><span class="dv">12</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-425"><a href="#cb22-425" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-426"><a href="#cb22-426" aria-hidden="true" tabindex="-1"></a>    plt.tight_layout()</span>
+<span id="cb22-427"><a href="#cb22-427" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> fig</span>
+<span id="cb22-428"><a href="#cb22-428" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-429"><a href="#cb22-429" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> plot_temp_vs_humidity_by_height(analysis_data)</span>
+<span id="cb22-430"><a href="#cb22-430" aria-hidden="true" tabindex="-1"></a>plt.show()</span>
+<span id="cb22-431"><a href="#cb22-431" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb22-432"><a href="#cb22-432" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-433"><a href="#cb22-433" aria-hidden="true" tabindex="-1"></a>Relative humidity decreases when temperature increases, showing a clear inverse relationship between these two variables. Point color indicates height above ground, revealing that measurements from higher canopy layers tend to be slightly warmer and drier, while lower layers are cooler and more humid. This pattern highlights a vertical microclimatic gradient within the forest canopy, with lower layers experiencing more moisture and variability, and upper layers being drier and thermally more stable.</span>
+<span id="cb22-434"><a href="#cb22-434" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-435"><a href="#cb22-435" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-436"><a href="#cb22-436" aria-hidden="true" tabindex="-1"></a><span class="fu">## Finding 4: Humidity Relationship with Height</span></span>
+<span id="cb22-439"><a href="#cb22-439" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
+<span id="cb22-440"><a href="#cb22-440" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: finding4-humidity-height</span></span>
+<span id="cb22-441"><a href="#cb22-441" aria-hidden="true" tabindex="-1"></a><span class="co">#| fig-cap: "Relationship between canopy height and relative humidity. Each point represents a single measurement, colored by temperature. The clear downward trend shows that humidity systematically decreases with increasing height above ground."</span></span>
+<span id="cb22-442"><a href="#cb22-442" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-443"><a href="#cb22-443" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> plot_humidity_vs_height(data, figsize<span class="op">=</span>(<span class="dv">8</span>, <span class="dv">7</span>)):</span>
+<span id="cb22-444"><a href="#cb22-444" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""</span></span>
+<span id="cb22-445"><a href="#cb22-445" aria-hidden="true" tabindex="-1"></a><span class="co">    Simple scatter plot of humidity vs height</span></span>
+<span id="cb22-446"><a href="#cb22-446" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
+<span id="cb22-447"><a href="#cb22-447" aria-hidden="true" tabindex="-1"></a>    fig, ax <span class="op">=</span> plt.subplots(figsize<span class="op">=</span>figsize)</span>
+<span id="cb22-448"><a href="#cb22-448" aria-hidden="true" tabindex="-1"></a>    sample <span class="op">=</span> data.sample(n<span class="op">=</span><span class="bu">min</span>(<span class="dv">3000</span>, <span class="bu">len</span>(data)), random_state<span class="op">=</span><span class="dv">42</span>)</span>
 <span id="cb22-449"><a href="#cb22-449" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-450"><a href="#cb22-450" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Color the lines</span></span>
-<span id="cb22-451"><a href="#cb22-451" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> partname <span class="kw">in</span> (<span class="st">'cbars'</span>, <span class="st">'cmins'</span>, <span class="st">'cmaxes'</span>, <span class="st">'cmedians'</span>, <span class="st">'cmeans'</span>):</span>
-<span id="cb22-452"><a href="#cb22-452" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> partname <span class="kw">in</span> parts:</span>
-<span id="cb22-453"><a href="#cb22-453" aria-hidden="true" tabindex="-1"></a>            parts[partname].set_edgecolor(<span class="st">'black'</span>)</span>
-<span id="cb22-454"><a href="#cb22-454" aria-hidden="true" tabindex="-1"></a>            parts[partname].set_linewidth(<span class="fl">1.5</span>)</span>
-<span id="cb22-455"><a href="#cb22-455" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-456"><a href="#cb22-456" aria-hidden="true" tabindex="-1"></a>    ax.set_xticks([<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>])</span>
-<span id="cb22-457"><a href="#cb22-457" aria-hidden="true" tabindex="-1"></a>    ax.set_xticklabels(layers)</span>
-<span id="cb22-458"><a href="#cb22-458" aria-hidden="true" tabindex="-1"></a>    ax.set_xlabel(<span class="st">'Canopy Layer'</span>, fontsize<span class="op">=</span><span class="dv">13</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-459"><a href="#cb22-459" aria-hidden="true" tabindex="-1"></a>    ax.set_ylabel(<span class="st">'Relative Humidity (%)'</span>, fontsize<span class="op">=</span><span class="dv">13</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-460"><a href="#cb22-460" aria-hidden="true" tabindex="-1"></a>    ax.set_title(<span class="st">'Humidity Distribution by Canopy Layer'</span>, </span>
-<span id="cb22-461"><a href="#cb22-461" aria-hidden="true" tabindex="-1"></a>                 fontsize<span class="op">=</span><span class="dv">15</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
-<span id="cb22-462"><a href="#cb22-462" aria-hidden="true" tabindex="-1"></a>    ax.grid(<span class="va">True</span>, alpha<span class="op">=</span><span class="fl">0.3</span>, axis<span class="op">=</span><span class="st">'y'</span>)</span>
-<span id="cb22-463"><a href="#cb22-463" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb22-464"><a href="#cb22-464" aria-hidden="true" tabindex="-1"></a>    plt.tight_layout()</span>
-<span id="cb22-465"><a href="#cb22-465" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> fig</span>
-<span id="cb22-466"><a href="#cb22-466" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-467"><a href="#cb22-467" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> plot_humidity_violins(analysis_data)</span>
-<span id="cb22-468"><a href="#cb22-468" aria-hidden="true" tabindex="-1"></a>plt.show()</span>
-<span id="cb22-469"><a href="#cb22-469" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
-<span id="cb22-470"><a href="#cb22-470" aria-hidden="true" tabindex="-1"></a>Median humidity values are similar across layers, approximately 55–60%, indicating that typical humidity is consistent throughout the canopy. However, the distribution shapes reveal layer-specific variability. The Lower and Middle layers exhibit wider spreads at low humidity values, suggesting that these layers experience more frequent dry conditions. In contrast, the Upper layer shows a slightly narrower distribution around the median, with fewer extremely low values, though it still reaches high humidity levels. Overall, while central tendencies are similar, the lower and middle canopy layers are subject to greater fluctuations in relative humidity, likely reflecting microclimatic effects such as differential sunlight exposure and airflow.</span>
+<span id="cb22-450"><a href="#cb22-450" aria-hidden="true" tabindex="-1"></a>    scatter <span class="op">=</span> ax.scatter(sample[<span class="st">'humidity'</span>], sample[<span class="st">'Height'</span>], </span>
+<span id="cb22-451"><a href="#cb22-451" aria-hidden="true" tabindex="-1"></a>                        c<span class="op">=</span>sample[<span class="st">'humid_temp'</span>], cmap<span class="op">=</span><span class="st">'coolwarm'</span>, </span>
+<span id="cb22-452"><a href="#cb22-452" aria-hidden="true" tabindex="-1"></a>                        alpha<span class="op">=</span><span class="fl">0.5</span>, s<span class="op">=</span><span class="dv">15</span>, edgecolors<span class="op">=</span><span class="st">'none'</span>)</span>
+<span id="cb22-453"><a href="#cb22-453" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-454"><a href="#cb22-454" aria-hidden="true" tabindex="-1"></a>    ax.set_xlabel(<span class="st">'Relative Humidity (%)'</span>, fontsize<span class="op">=</span><span class="dv">13</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-455"><a href="#cb22-455" aria-hidden="true" tabindex="-1"></a>    ax.set_ylabel(<span class="st">'Height Above Ground (m)'</span>, fontsize<span class="op">=</span><span class="dv">13</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-456"><a href="#cb22-456" aria-hidden="true" tabindex="-1"></a>    ax.set_title(<span class="st">'Humidity Decreases with Canopy Height'</span>, </span>
+<span id="cb22-457"><a href="#cb22-457" aria-hidden="true" tabindex="-1"></a>                 fontsize<span class="op">=</span><span class="dv">15</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-458"><a href="#cb22-458" aria-hidden="true" tabindex="-1"></a>    ax.grid(<span class="va">True</span>, alpha<span class="op">=</span><span class="fl">0.3</span>)</span>
+<span id="cb22-459"><a href="#cb22-459" aria-hidden="true" tabindex="-1"></a>    cbar <span class="op">=</span> plt.colorbar(scatter, ax<span class="op">=</span>ax)</span>
+<span id="cb22-460"><a href="#cb22-460" aria-hidden="true" tabindex="-1"></a>    cbar.set_label(<span class="st">'Temperature (°C)'</span>, fontsize<span class="op">=</span><span class="dv">12</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-461"><a href="#cb22-461" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-462"><a href="#cb22-462" aria-hidden="true" tabindex="-1"></a>    plt.tight_layout()</span>
+<span id="cb22-463"><a href="#cb22-463" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> fig</span>
+<span id="cb22-464"><a href="#cb22-464" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-465"><a href="#cb22-465" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> plot_humidity_vs_height(analysis_data)</span>
+<span id="cb22-466"><a href="#cb22-466" aria-hidden="true" tabindex="-1"></a>plt.show()</span>
+<span id="cb22-467"><a href="#cb22-467" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb22-468"><a href="#cb22-468" aria-hidden="true" tabindex="-1"></a>As canopy height increases, relative humidity tends to decrease and temperature tends to cool, reflecting microclimatic changes through the forest vertical structure. Lower layers are warmer and more variable in moisture, while upper layers are cooler and slightly drier.</span>
+<span id="cb22-469"><a href="#cb22-469" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-470"><a href="#cb22-470" aria-hidden="true" tabindex="-1"></a><span class="fu">## Finding 5: Humidity Distributions by Canopy Layer</span></span>
 <span id="cb22-471"><a href="#cb22-471" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb22-472"><a href="#cb22-472" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb22-473"><a href="#cb22-473" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-474"><a href="#cb22-474" aria-hidden="true" tabindex="-1"></a><span class="fu"># Discussion</span></span>
-<span id="cb22-475"><a href="#cb22-475" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-476"><a href="#cb22-476" aria-hidden="true" tabindex="-1"></a>This analysis demonstrates that temperature-humidity relationships in redwood canopies vary systematically with vertical position, revealing fundamentally different environmental processes operating at different heights. The three key findings tell a coherent story about canopy microclimate structure:</span>
-<span id="cb22-477"><a href="#cb22-477" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-478"><a href="#cb22-478" aria-hidden="true" tabindex="-1"></a>The strength of temperature-humidity coupling increases with height. Upper canopy sensors show tight inverse relationships characteristic of direct atmospheric forcing, while lower canopy sensors show weak, diffuse relationships indicating buffering and decoupling from atmospheric conditions. This gradient in coupling strength reflects the transition from exposed, atmosphere-dominated conditions at the top to buffered, tree-physiology-influenced conditions at the bottom.</span>
-<span id="cb22-479"><a href="#cb22-479" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-480"><a href="#cb22-480" aria-hidden="true" tabindex="-1"></a>Second, despite dramatic differences in light exposure and humidity levels, temperature remains relatively uniform across canopy heights. This thermal uniformity, combined with varying humidity, creates distinct microenvironments: the upper canopy is warm and dry while the lower canopy is warm and humid. The combination of similar temperatures but different humidities means that vapor pressure deficit (the driving force for transpiration) varies substantially with height even though temperature alone would suggest similar conditions.</span>
-<span id="cb22-481"><a href="#cb22-481" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-482"><a href="#cb22-482" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-483"><a href="#cb22-483" aria-hidden="true" tabindex="-1"></a>From a tree physiology perspective, these findings have important implications. The upper canopy operates under high evaporative demand (low humidity) despite moderate temperatures, requiring substantial water transport from roots. The tight temperature-humidity coupling means that upper leaves experience coordinated stress from both factors. The lower canopy benefits from high humidity reducing water stress, and the weak temperature-humidity coupling means that fog events can raise humidity independent of temperature changes, providing additional moisture without requiring temperature drops.</span>
-<span id="cb22-484"><a href="#cb22-484" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-485"><a href="#cb22-485" aria-hidden="true" tabindex="-1"></a>These patterns also highlight the limitations of using temperature alone as a microclimate indicator. Two positions with identical temperatures (as seen in Finding 2) can have dramatically different humidity levels and different environmental forcing mechanisms (as seen in Findings 1 and 3). A complete understanding of canopy microclimate requires examining multiple variables and their relationships, not just their individual distributions.</span>
-<span id="cb22-486"><a href="#cb22-486" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-487"><a href="#cb22-487" aria-hidden="true" tabindex="-1"></a>Future work could examine how these temperature-humidity relationships vary diurnally (day versus night), seasonally, or during specific weather events like fog intrusions or heat waves. Comparing multiple trees or forest stands would test whether these patterns are general features of tall forest canopies or specific to this particular redwood tree and its coastal location.</span>
+<span id="cb22-476"><a href="#cb22-476" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
+<span id="cb22-477"><a href="#cb22-477" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> plot_humidity_violins(data, figsize<span class="op">=</span>(<span class="dv">8</span>, <span class="dv">6</span>)):</span>
+<span id="cb22-478"><a href="#cb22-478" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""</span></span>
+<span id="cb22-479"><a href="#cb22-479" aria-hidden="true" tabindex="-1"></a><span class="co">    Violin plot of humidity by canancy layer</span></span>
+<span id="cb22-480"><a href="#cb22-480" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
+<span id="cb22-481"><a href="#cb22-481" aria-hidden="true" tabindex="-1"></a>    <span class="im">import</span> matplotlib.pyplot <span class="im">as</span> plt  <span class="co"># Move import to TOP</span></span>
+<span id="cb22-482"><a href="#cb22-482" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-483"><a href="#cb22-483" aria-hidden="true" tabindex="-1"></a>    fig, ax <span class="op">=</span> plt.subplots(figsize<span class="op">=</span>figsize)</span>
+<span id="cb22-484"><a href="#cb22-484" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-485"><a href="#cb22-485" aria-hidden="true" tabindex="-1"></a>    layers <span class="op">=</span> [<span class="st">'Lower'</span>, <span class="st">'Middle'</span>, <span class="st">'Upper'</span>]</span>
+<span id="cb22-486"><a href="#cb22-486" aria-hidden="true" tabindex="-1"></a>    data_to_plot <span class="op">=</span> [data[data[<span class="st">'canopy_layer'</span>] <span class="op">==</span> layer][<span class="st">'humidity'</span>].dropna().values </span>
+<span id="cb22-487"><a href="#cb22-487" aria-hidden="true" tabindex="-1"></a>                    <span class="cf">for</span> layer <span class="kw">in</span> layers]</span>
+<span id="cb22-488"><a href="#cb22-488" aria-hidden="true" tabindex="-1"></a>    colors <span class="op">=</span> [<span class="st">'forestgreen'</span>, <span class="st">'orange'</span>, <span class="st">'pink'</span>]</span>
+<span id="cb22-489"><a href="#cb22-489" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-490"><a href="#cb22-490" aria-hidden="true" tabindex="-1"></a>    parts <span class="op">=</span> ax.violinplot(data_to_plot, positions<span class="op">=</span>[<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>], </span>
+<span id="cb22-491"><a href="#cb22-491" aria-hidden="true" tabindex="-1"></a>                          showmeans<span class="op">=</span><span class="va">True</span>, showmedians<span class="op">=</span><span class="va">True</span>, widths<span class="op">=</span><span class="fl">0.7</span>)</span>
+<span id="cb22-492"><a href="#cb22-492" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-493"><a href="#cb22-493" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i, pc <span class="kw">in</span> <span class="bu">enumerate</span>(parts[<span class="st">'bodies'</span>]):</span>
+<span id="cb22-494"><a href="#cb22-494" aria-hidden="true" tabindex="-1"></a>        pc.set_facecolor(colors[i])</span>
+<span id="cb22-495"><a href="#cb22-495" aria-hidden="true" tabindex="-1"></a>        pc.set_alpha(<span class="fl">0.5</span>)</span>
+<span id="cb22-496"><a href="#cb22-496" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-497"><a href="#cb22-497" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Color the lines</span></span>
+<span id="cb22-498"><a href="#cb22-498" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> partname <span class="kw">in</span> (<span class="st">'cbars'</span>, <span class="st">'cmins'</span>, <span class="st">'cmaxes'</span>, <span class="st">'cmedians'</span>, <span class="st">'cmeans'</span>):</span>
+<span id="cb22-499"><a href="#cb22-499" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> partname <span class="kw">in</span> parts:</span>
+<span id="cb22-500"><a href="#cb22-500" aria-hidden="true" tabindex="-1"></a>            parts[partname].set_edgecolor(<span class="st">'black'</span>)</span>
+<span id="cb22-501"><a href="#cb22-501" aria-hidden="true" tabindex="-1"></a>            parts[partname].set_linewidth(<span class="fl">1.5</span>)</span>
+<span id="cb22-502"><a href="#cb22-502" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-503"><a href="#cb22-503" aria-hidden="true" tabindex="-1"></a>    ax.set_xticks([<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>])</span>
+<span id="cb22-504"><a href="#cb22-504" aria-hidden="true" tabindex="-1"></a>    ax.set_xticklabels(layers)</span>
+<span id="cb22-505"><a href="#cb22-505" aria-hidden="true" tabindex="-1"></a>    ax.set_xlabel(<span class="st">'Canopy Layer'</span>, fontsize<span class="op">=</span><span class="dv">13</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-506"><a href="#cb22-506" aria-hidden="true" tabindex="-1"></a>    ax.set_ylabel(<span class="st">'Relative Humidity (%)'</span>, fontsize<span class="op">=</span><span class="dv">13</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-507"><a href="#cb22-507" aria-hidden="true" tabindex="-1"></a>    ax.set_title(<span class="st">'Humidity Distribution by Canopy Layer'</span>, </span>
+<span id="cb22-508"><a href="#cb22-508" aria-hidden="true" tabindex="-1"></a>                 fontsize<span class="op">=</span><span class="dv">15</span>, fontweight<span class="op">=</span><span class="st">'bold'</span>)</span>
+<span id="cb22-509"><a href="#cb22-509" aria-hidden="true" tabindex="-1"></a>    ax.grid(<span class="va">True</span>, alpha<span class="op">=</span><span class="fl">0.3</span>, axis<span class="op">=</span><span class="st">'y'</span>)</span>
+<span id="cb22-510"><a href="#cb22-510" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-511"><a href="#cb22-511" aria-hidden="true" tabindex="-1"></a>    plt.tight_layout()</span>
+<span id="cb22-512"><a href="#cb22-512" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> fig</span>
+<span id="cb22-513"><a href="#cb22-513" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-514"><a href="#cb22-514" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> plot_humidity_violins(analysis_data)</span>
+<span id="cb22-515"><a href="#cb22-515" aria-hidden="true" tabindex="-1"></a>plt.show()</span>
+<span id="cb22-516"><a href="#cb22-516" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb22-517"><a href="#cb22-517" aria-hidden="true" tabindex="-1"></a>Median humidity values are similar across layers, approximately 55–60%, indicating that typical humidity is consistent throughout the canopy. However, the distribution shapes reveal layer-specific variability. The Lower and Middle layers exhibit wider spreads at low humidity values, suggesting that these layers experience more frequent dry conditions. In contrast, the Upper layer shows a slightly narrower distribution around the median, with fewer extremely low values, though it still reaches high humidity levels. Overall, while central tendencies are similar, the lower and middle canopy layers are subject to greater fluctuations in relative humidity, likely reflecting microclimatic effects such as differential sunlight exposure and airflow.</span>
+<span id="cb22-518"><a href="#cb22-518" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-519"><a href="#cb22-519" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-520"><a href="#cb22-520" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-521"><a href="#cb22-521" aria-hidden="true" tabindex="-1"></a><span class="fu"># Discussion</span></span>
+<span id="cb22-522"><a href="#cb22-522" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-523"><a href="#cb22-523" aria-hidden="true" tabindex="-1"></a>This analysis demonstrates that temperature-humidity relationships in redwood canopies vary systematically with vertical position, revealing fundamentally different environmental processes operating at different heights. The three key findings tell a coherent story about canopy microclimate structure:</span>
+<span id="cb22-524"><a href="#cb22-524" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-525"><a href="#cb22-525" aria-hidden="true" tabindex="-1"></a>The strength of temperature-humidity coupling increases with height. Upper canopy sensors show tight inverse relationships characteristic of direct atmospheric forcing, while lower canopy sensors show weak, diffuse relationships indicating buffering and decoupling from atmospheric conditions. This gradient in coupling strength reflects the transition from exposed, atmosphere-dominated conditions at the top to buffered, tree-physiology-influenced conditions at the bottom.</span>
+<span id="cb22-526"><a href="#cb22-526" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-527"><a href="#cb22-527" aria-hidden="true" tabindex="-1"></a>Second, despite dramatic differences in light exposure and humidity levels, temperature remains relatively uniform across canopy heights. This thermal uniformity, combined with varying humidity, creates distinct microenvironments: the upper canopy is warm and dry while the lower canopy is warm and humid. The combination of similar temperatures but different humidities means that vapor pressure deficit (the driving force for transpiration) varies substantially with height even though temperature alone would suggest similar conditions.</span>
+<span id="cb22-528"><a href="#cb22-528" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-529"><a href="#cb22-529" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-530"><a href="#cb22-530" aria-hidden="true" tabindex="-1"></a>From a tree physiology perspective, these findings have important implications. The upper canopy operates under high evaporative demand (low humidity) despite moderate temperatures, requiring substantial water transport from roots. The tight temperature-humidity coupling means that upper leaves experience coordinated stress from both factors. The lower canopy benefits from high humidity reducing water stress, and the weak temperature-humidity coupling means that fog events can raise humidity independent of temperature changes, providing additional moisture without requiring temperature drops.</span>
+<span id="cb22-531"><a href="#cb22-531" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-532"><a href="#cb22-532" aria-hidden="true" tabindex="-1"></a>These patterns also highlight the limitations of using temperature alone as a microclimate indicator. Two positions with identical temperatures (as seen in Finding 2) can have dramatically different humidity levels and different environmental forcing mechanisms (as seen in Findings 1 and 3). A complete understanding of canopy microclimate requires examining multiple variables and their relationships, not just their individual distributions.</span>
+<span id="cb22-533"><a href="#cb22-533" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-534"><a href="#cb22-534" aria-hidden="true" tabindex="-1"></a>Future work could examine how these temperature-humidity relationships vary diurnally (day versus night), seasonally, or during specific weather events like fog intrusions or heat waves. Comparing multiple trees or forest stands would test whether these patterns are general features of tall forest canopies or specific to this particular redwood tree and its coastal location.</span>
 </code></pre></div><button title="Copy to Clipboard" class="code-copy-button" data-in-quarto-modal=""><i class="bi"></i></button></div>
 </div></div></div></div></div>
 </div> <!-- /content -->

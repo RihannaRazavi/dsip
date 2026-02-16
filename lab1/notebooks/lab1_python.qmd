@@ -43,6 +43,9 @@ Coastal redwood (*Sequoia sempervirens*) trees create complex microclimates due 
 
 This analysis uses high-resolution sensor network data from Tolle et al. (2005) collected over 44 days in a single redwood tree to examine how temperature-humidity relationships differ between lower, middle, and upper canopy positions.
 
+
+
+
 # Data Overview and Collection
 ```{python}
 #| label: load-data
@@ -58,6 +61,50 @@ print(f"Log dataset: {len(redwood_log_orig):,} observations")
 print(f"Number of unique sensors (net): {redwood_net_orig['nodeid'].nunique()}")
 print(f"Number of unique sensors (log): {redwood_log_orig['nodeid'].nunique()}")
 ```
+
+
+
+
+## Data Collection Methodology
+
+The data were collected using a wireless sensor network deployed in a single coastal redwood tree in Sonoma County, California, from April 27 to June 10, 2004 (44 days). Thirty-three sensor nodes were placed at heights ranging from 15 to 70 meters above ground level on the western side of the tree, positioned 0.1-1.0 meters from the trunk. Each node consisted of a Mica2 mote equipped with Sensirion SHT11 sensors for temperature and humidity measurement (±0.5°C and ±3.5% accuracy, respectively) and Hamamatsu S1087 photodiodes for measuring photosynthetically active radiation. Measurements were taken every 5 minutes throughout the study period, providing high temporal resolution of microclimate dynamics.
+
+The sensor network employed two redundant data collection mechanisms to maximize data reliability:
+
+1. **Network transmission**: Sensors transmitted readings wirelessly through a multi-hop network to a base station at ground level
+2. **Local logging**: Each sensor stored readings on a 512KB memory chip as backup
+
+Due to wireless network failures caused by interference, battery depletion in relay nodes, and gateway outages, the network transmission achieved only approximately 40% data yield. The local logs provided higher reliability but filled their memory capacity after approximately 3 weeks, after which they stopped recording. We merged both data sources to maximize coverage, removing duplicates by matching sensor ID, timestamp, and measurement period. After deduplication, we achieved approximately 49% coverage of the theoretical maximum number of measurements.
+
+A critical data quality issue was voltage scale inconsistency: the network dataset recorded voltage as raw ADC (analog-to-digital converter) values ranging from 0-1023, while the log dataset stored actual voltages in the 0-3.3V range. Rather than applying a theoretical conversion formula, we used an empirical approach by matching the distribution percentiles between the two datasets to derive a linear transformation (scale factor and offset) that aligned the voltage measurements. This data-driven calibration accounts for hardware-specific differences in ADC configuration and reference voltages.
+
+## Variables of Interest and Their Relevance
+
+For this analysis examining temperature-humidity relationships across canopy heights, we focus on five key variables:
+
+**Temperature (humid_temp, °C)**: Air temperature measured by the SHT11 sensor with ±0.5°C accuracy, ranging from 6.6°C to 32.6°C during the study period. Temperature is critical for understanding thermal stress on tree physiology and evaporative demand. Our research question specifically examines how temperature couples with humidity across different canopy positions, with the hypothesis that coupling strength varies with height due to differences in atmospheric exposure versus canopy buffering.
+
+**Relative Humidity (humidity, %)**: Measured by the same SHT11 sensor with ±3.5% accuracy, ranging from 16.4% to 100%. Humidity affects transpiration rates, indicates fog presence, and is essential for understanding water stress in the canopy. This variable is central to our research question as we examine how the temperature-humidity relationship differs between upper canopy (exposed, atmosphere-dominated) and lower canopy (buffered, physiology-influenced) positions.
+
+**Incident PAR (hamatop, µmol/m²/s)**: Photosynthetically active radiation measured by an upward-facing Hamamatsu S1087 photodiode, ranging from 0 (nighttime) to over 2,150 µmol/m²/s (full midday sun at canopy top). While not the primary focus of our analysis, PAR is important because it drives both temperature patterns (through radiative heating) and humidity patterns (through increased evaporative demand), helping explain the mechanisms behind temperature-humidity coupling.
+
+**Height (meters)**: The vertical position of each sensor above ground level, distributed from 15m to 70m with approximately 2-meter spacing. Height is our primary spatial dimension for examining how environmental processes differ vertically within the canopy. We classify sensors into three layers (Lower: <35m, Middle: 35-55m, Upper: >55m) to test whether temperature-humidity relationships transition systematically from buffered conditions near the ground to atmosphere-dominated conditions at the canopy top.
+
+**Voltage (volts)**: Battery voltage, with optimal sensor operation in the 2.4-3.0V range. While not a biological or environmental variable, voltage is a critical quality indicator because temperature and humidity sensors become unreliable when battery voltage drops below approximately 2.4V. We use voltage to filter invalid measurements and identify periods when sensor accuracy may be compromised due to insufficient power supply.
+
+## Advantages and Limitations of the Dataset
+
+This dataset is uniquely suited to studying temperature-humidity relationships across canopy heights due to several advantages in the context of our research question:
+
+**High spatial density**: The approximately 2-meter vertical spacing across 55 meters of vertical extent provides fine-scale resolution to detect microclimate gradients and identify the transition zone where temperature-humidity coupling shifts from atmosphere-dominated (upper canopy) to canopy-buffered (lower canopy) patterns. Most forest microclimate studies use much coarser spacing (5-10m), which would miss important transition dynamics.
+
+**High temporal resolution**: Five-minute measurement intervals capture diurnal cycles and transient events such as fog intrusions and rapid solar heating that drive temperature-humidity dynamics. This temporal resolution is essential for understanding whether temperature and humidity are coupled in real-time (responding simultaneously to atmospheric forcing) or whether time lags and buffering processes decouple their relationship at certain canopy positions.
+
+
+**Single-sided deployment**: Sensors were concentrated on the western side of the tree only. Temperature-humidity relationships may differ on the eastern exposure due to differences in solar heating timing (morning versus afternoon), potentially limiting the generalizability of our conclusions about coupling patterns to other aspects and tree structures.
+
+**Substantial missing data**: The combination of network transmission failures (60% data loss), local logging capacity limits, and voltage-based quality filtering resulted in 51% missing data overall. This missing data may introduce temporal bias, as battery failures increased over time, meaning early study periods are better represented than later periods. Additionally, this could bias our conclusions if data loss was not random across canopy positions.
+
 
 
 
