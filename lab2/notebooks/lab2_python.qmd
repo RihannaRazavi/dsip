@@ -1,0 +1,2500 @@
+---
+title: "Lab 2: Breast Cancer Subtyping via Unsupervised Learning"
+author: "Rihanna Razavi"
+date: today
+format: 
+  html:
+    code-fold: true
+    code-summary: "Show Code"
+    code-tools: true
+    theme: sandstone
+    lightbox: true
+    embed-resources: true
+jupyter: python3
+toc: true
+execute: 
+  warning: false
+  message: false
+---
+```{python}
+#| label: setup
+import sys
+sys.path.append("..")
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from os.path import join as oj
+
+# Set random seed for reproducibility
+np.random.seed(42)
+
+# Set plotting style
+sns.set_style("whitegrid")
+plt.rcParams['figure.figsize'] = (10, 6)
+
+# Define paths
+DATA_PATH = oj("..", "data")
+RESULTS_PATH = oj("..", "results")
+```
+
+# Introduction
+
+Breast cancer is a heterogeneous disease with multiple subtypes that exhibit distinct molecular profiles, prognoses, and treatment responses. In this analysis, we apply unsupervised learning methods to RNASeq gene expression data from 1,043 breast cancer patients in The Cancer Genome Atlas (TCGA) to rediscover these breast cancer subtypes. The dataset contains expression levels for 5,000 genes that have been pre-filtered based on variance. Our goal is to identify natural groupings (clusters) of patients based on their gene expression patterns, which may correspond to clinically meaningful breast cancer subtypes.
+
+# Exploratory Data Analysis
+```{python}
+
+gene_expr = pd.read_csv(oj(DATA_PATH, "tcga_brca_array_data_filtered.csv"), index_col=0)
+
+print(f"Number of patients: {gene_expr.shape[0]}")
+print(f"Number of genes: {gene_expr.shape[1]}")
+
+
+
+print(f"\nstatistics:")
+print(gene_expr.describe())
+```
+```{python}
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+
+axes[0].hist(gene_expr.values.flatten(), bins=100, alpha=0.7, color='steelblue', edgecolor='navy')
+axes[0].set_xlabel('Gene Expression Value', fontsize=12, fontweight='bold')
+axes[0].set_ylabel('Frequency', fontsize=12, fontweight='bold')
+axes[0].set_title('Distribution of Raw Gene Expression Values', fontsize=13, fontweight='bold')
+axes[0].set_yscale('log')
+axes[0].grid(True, alpha=0.3)
+
+patient_medians = gene_expr.median(axis=1)
+axes[1].boxplot([gene_expr.iloc[i, :] for i in range(min(50, len(gene_expr)))], 
+                showfliers=False, patch_artist=True,
+                boxprops=dict(facecolor='lightcoral', alpha=0.7))
+axes[1].set_xlabel('Patient Index (first 50)', fontsize=12, fontweight='bold')
+axes[1].set_ylabel('Gene Expression Value', fontsize=12, fontweight='bold')
+axes[1].set_title('Gene Expression Range per Patient (Sample)', fontsize=13, fontweight='bold')
+axes[1].grid(True, alpha=0.3, axis='y')
+
+plt.tight_layout()
+plt.show()
+
+print(f"\n=== KEY OBSERVATIONS ===")
+print(f"Min expression: {gene_expr.min().min():.2f}")
+print(f"Max expression: {gene_expr.max().max():.2f}")
+print(f"Mean expression: {gene_expr.mean().mean():.2f}")
+print(f"Median expression: {gene_expr.median().median():.2f}")
+```
+
+## EDA Interpretation
+
+The exploratory analysis reveals several key characteristics of the gene expression data:
+
+**Distribution Properties:** The raw gene expression values exhibit an extremely right-skewed distribution with a very long tail. The median expression across all genes and patients is 27.25, while the mean is 622.80, and the maximum value reaches over 2 million. This 75,000-fold difference between median and maximum indicates the presence of extreme outliers and highlights the scale heterogeneity inherent in gene expression data.
+
+**Heterogeneity Across Genes:** Different genes show vastly different expression ranges. Some genes like `RP11.986E7.7` (mean: 21,706) and `ABAT` (mean: 1,470) are highly expressed across patients, while others like `NAT2` (mean: 20.9) and `AADAC` (mean: 4.7) show much lower expression. This variance in expression levels is expected, as some genes are "housekeeping" genes that are consistently active, while others are tissue-specific or disease-related.
+
+**Implications for Analysis:** The extreme skewness and scale differences suggest that dimension reduction and clustering methods applied directly to raw expression values may be dominated by a small number of highly-expressed genes. Log-transformation is commonly used to compress this dynamic range and stabilize variance, making patterns more interpretable and preventing high-expression genes from overwhelming the analysis.
+
+## Additional EDA: Gene Expression Variability
+```{python}
+fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+gene_variances = gene_expr.var(axis=0)
+axes[0].hist(np.log10(gene_variances + 1), bins=50, alpha=0.7, 
+            color='forestgreen', edgecolor='darkgreen')
+axes[0].set_xlabel('Log10(Gene Variance + 1)', fontsize=12, fontweight='bold')
+axes[0].set_ylabel('Number of Genes', fontsize=12, fontweight='bold')
+axes[0].set_title('Distribution of Gene Expression Variance', fontsize=13, fontweight='bold')
+axes[0].grid(True, alpha=0.3)
+axes[0].axvline(np.log10(gene_variances.median() + 1), color='red', 
+               linestyle='--', linewidth=2, label=f'Median: {gene_variances.median():.1f}')
+axes[0].legend()
+
+
+top_var_genes = gene_variances.nlargest(50).index
+gene_expr_subset = gene_expr[top_var_genes]
+
+from sklearn.preprocessing import StandardScaler
+gene_expr_scaled = StandardScaler().fit_transform(gene_expr_subset.T).T
+
+from sklearn.decomposition import PCA
+pca_sort = PCA(n_components=1).fit_transform(gene_expr_scaled)
+sort_idx = np.argsort(pca_sort.flatten())
+
+im = axes[1].imshow(gene_expr_scaled[sort_idx, :], aspect='auto', cmap='RdBu_r', 
+                    vmin=-3, vmax=3, interpolation='nearest')
+axes[1].set_xlabel('Top 50 Variable Genes', fontsize=10, fontweight='bold')
+axes[1].set_ylabel('Patients (sorted by PC1)', fontsize=12, fontweight='bold')
+axes[1].set_title('Heatmap: Top 50 Most Variable Genes', fontsize=13, fontweight='bold')
+plt.colorbar(im, ax=axes[1], label='Standardized Expression')
+
+plt.tight_layout()
+plt.show()
+
+print(f"\n=== VARIABILITY STATISTICS ===")
+print(f"Median gene variance: {gene_variances.median():.2f}")
+print(f"Mean gene variance: {gene_variances.mean():.2f}")
+print(f"Top 5 most variable genes:")
+print(gene_variances.nlargest(5))
+```
+
+The heatmap of the 50 most variable genes (sorted by first principal component) reveals distinct visual blocks of co-expressed genes across patient groups, suggesting the presence of latent structure in the data. This pattern supports the hypothesis that biologically meaningful breast cancer subtypes exist and can potentially be discovered through unsupervised learning methods.
+
+
+
+
+
+
+# Dimension Reduction
+
+Dimension reduction techniques help visualize high-dimensional gene expression data (4,999 dimensions) in 2D space while preserving important structure. We will apply three complementary methods: **PCA (Principal Component Analysis)**; **t-SNE (t-Distributed Stochastic Neighbor Embedding)**; and **UMAP (Uniform Manifold Approximation and Projection)**.
+
+## Dimension Reduction on Raw Gene Expression Data
+
+We begin by applying all three dimension reduction methods to the raw (untransformed) gene expression data.
+
+**Method Selection and Hyperparameters:**
+
+- **PCA**: No hyperparameters to tune. We extract the first 2 principal components to enable 2D visualization. PCA is deterministic and scale-sensitive.
+
+- **t-SNE**: We use `perplexity=30` (default, balances local vs global structure), `learning_rate=200` (default), and `max_iter=1000` (sufficient iterations for convergence). We set `random_state=42` for reproducibility.
+
+- **UMAP**: We use `n_neighbors=15` (default, controls local vs global structure balance) and `min_dist=0.1` (default, controls tightness of clusters in embedding). We set `random_state=42` for reproducibility.
+
+Later we will also do optimizations for these parameters.
+```{python}
+
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from umap import UMAP
+
+pca_raw = PCA(n_components=2, random_state=42)
+pca_raw_result = pca_raw.fit_transform(gene_expr)
+
+tsne_raw = TSNE(n_components=2, perplexity=30, learning_rate=200, max_iter=1000, random_state=42)
+tsne_raw_result = tsne_raw.fit_transform(gene_expr)
+
+umap_raw = UMAP(n_neighbors=15, min_dist=0.1, n_components=2, random_state=42)
+umap_raw_result = umap_raw.fit_transform(gene_expr)
+
+# Plot results
+fig, axes = plt.subplots(1, 3, figsize=(20, 5))
+
+axes[0].scatter(pca_raw_result[:, 0], pca_raw_result[:, 1], 
+               alpha=0.6, s=20, c='steelblue', edgecolors='navy', linewidth=0.5)
+axes[0].set_xlabel(f'PC1 ({pca_raw.explained_variance_ratio_[0]*100:.1f}% variance)', 
+                   fontsize=12, fontweight='bold')
+axes[0].set_ylabel(f'PC2 ({pca_raw.explained_variance_ratio_[1]*100:.1f}% variance)', 
+                   fontsize=12, fontweight='bold')
+axes[0].set_title('PCA on Raw Gene Expression', fontsize=13, fontweight='bold')
+axes[0].grid(True, alpha=0.3)
+
+axes[1].scatter(tsne_raw_result[:, 0], tsne_raw_result[:, 1], 
+               alpha=0.6, s=20, c='coral', edgecolors='darkred', linewidth=0.5)
+axes[1].set_xlabel('t-SNE 1', fontsize=12, fontweight='bold')
+axes[1].set_ylabel('t-SNE 2', fontsize=12, fontweight='bold')
+axes[1].set_title('t-SNE on Raw Gene Expression', fontsize=13, fontweight='bold')
+axes[1].grid(True, alpha=0.3)
+
+axes[2].scatter(umap_raw_result[:, 0], umap_raw_result[:, 1], 
+               alpha=0.6, s=20, c='forestgreen', edgecolors='darkgreen', linewidth=0.5)
+axes[2].set_xlabel('UMAP 1', fontsize=12, fontweight='bold')
+axes[2].set_ylabel('UMAP 2', fontsize=12, fontweight='bold')
+axes[2].set_title('UMAP on Raw Gene Expression', fontsize=13, fontweight='bold')
+axes[2].grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+
+print(f"=== PCA ON RAW DATA ===")
+print(f"PC1 explains {pca_raw.explained_variance_ratio_[0]*100:.2f}% of variance")
+print(f"PC2 explains {pca_raw.explained_variance_ratio_[1]*100:.2f}% of variance")
+print(f"Total variance explained by PC1+PC2: {sum(pca_raw.explained_variance_ratio_[:2])*100:.2f}%")
+```
+
+**Observations:** All three methods on raw data reveal severe issues. For example, PCA shows extreme concentration of most points near the origin with outliers.
+
+
+## Dimension Reduction on Log-Transformed Gene Expression Data
+
+Following standard genomics practice, we apply log-transformation: X̃ = log(X + 1), which compresses the dynamic range and stabilizes variance.
+```{python}
+gene_expr_log = np.log(gene_expr + 1)
+
+print(f"=== LOG-TRANSFORMED DATA STATISTICS ===")
+print(f"Min: {gene_expr_log.min().min():.2f}")
+print(f"Max: {gene_expr_log.max().max():.2f}")
+print(f"Mean: {gene_expr_log.mean().mean():.2f}")
+print(f"Median: {gene_expr_log.median().median():.2f}")
+
+# Apply PCA to log-transformed data
+pca_log = PCA(n_components=2, random_state=42)
+pca_log_result = pca_log.fit_transform(gene_expr_log)
+
+tsne_log = TSNE(n_components=2, perplexity=30, learning_rate=200, max_iter=1000, random_state=42)
+tsne_log_result = tsne_log.fit_transform(gene_expr_log)
+
+umap_log = UMAP(n_neighbors=15, min_dist=0.1, n_components=2, random_state=42)
+umap_log_result = umap_log.fit_transform(gene_expr_log)
+
+# Plot results
+fig, axes = plt.subplots(1, 3, figsize=(20, 5))
+
+# PCA plot
+scatter1 = axes[0].scatter(pca_log_result[:, 0], pca_log_result[:, 1], 
+                          alpha=0.6, s=20, c=pca_log_result[:, 0], 
+                          cmap='viridis', edgecolors='black', linewidth=0.3)
+axes[0].set_xlabel(f'PC1 ({pca_log.explained_variance_ratio_[0]*100:.1f}% variance)', 
+                   fontsize=12, fontweight='bold')
+axes[0].set_ylabel(f'PC2 ({pca_log.explained_variance_ratio_[1]*100:.1f}% variance)', 
+                   fontsize=12, fontweight='bold')
+axes[0].set_title('PCA on Log-Transformed Data', fontsize=13, fontweight='bold')
+axes[0].grid(True, alpha=0.3)
+plt.colorbar(scatter1, ax=axes[0], label='PC1 Value')
+
+# t-SNE plot
+scatter2 = axes[1].scatter(tsne_log_result[:, 0], tsne_log_result[:, 1], 
+                          alpha=0.6, s=20, c=tsne_log_result[:, 0], 
+                          cmap='plasma', edgecolors='black', linewidth=0.3)
+axes[1].set_xlabel('t-SNE 1', fontsize=12, fontweight='bold')
+axes[1].set_ylabel('t-SNE 2', fontsize=12, fontweight='bold')
+axes[1].set_title('t-SNE on Log-Transformed Data', fontsize=13, fontweight='bold')
+axes[1].grid(True, alpha=0.3)
+plt.colorbar(scatter2, ax=axes[1], label='t-SNE 1 Value')
+
+# UMAP plot
+scatter3 = axes[2].scatter(umap_log_result[:, 0], umap_log_result[:, 1], 
+                          alpha=0.6, s=20, c=umap_log_result[:, 0], 
+                          cmap='coolwarm', edgecolors='black', linewidth=0.3)
+axes[2].set_xlabel('UMAP 1', fontsize=12, fontweight='bold')
+axes[2].set_ylabel('UMAP 2', fontsize=12, fontweight='bold')
+axes[2].set_title('UMAP on Log-Transformed Data', fontsize=13, fontweight='bold')
+axes[2].grid(True, alpha=0.3)
+plt.colorbar(scatter3, ax=axes[2], label='UMAP 1 Value')
+
+plt.tight_layout()
+plt.show()
+
+print(f"\n=== PCA ON LOG-TRANSFORMED DATA ===")
+print(f"PC1 explains {pca_log.explained_variance_ratio_[0]*100:.2f}% of variance")
+print(f"PC2 explains {pca_log.explained_variance_ratio_[1]*100:.2f}% of variance")
+print(f"Total variance explained by PC1+PC2: {sum(pca_log.explained_variance_ratio_[:2])*100:.2f}%")
+```
+
+**Observations:** After log-transformation, all three methods reveal clear structure, but with different emphases:
+
+
+The improved separation across all methods confirms that log-transformation successfully mitigates the scale issues present in raw data. The differences between methods highlight the trade-off between preserving global structure (PCA) versus emphasizing local clustering (t-SNE), with UMAP offering a middle ground.
+
+
+
+## Comparison Between Methods
+```{python}
+fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+first_components = np.column_stack([
+    pca_log_result[:, 0],
+    tsne_log_result[:, 0],
+    umap_log_result[:, 0]
+])
+
+corr_matrix = np.corrcoef(first_components.T)
+
+im = axes[0].imshow(corr_matrix, cmap='RdBu_r', vmin=-1, vmax=1, aspect='auto')
+axes[0].set_xticks([0, 1, 2])
+axes[0].set_yticks([0, 1, 2])
+axes[0].set_xticklabels(['PCA PC1', 't-SNE 1', 'UMAP 1'], fontsize=11)
+axes[0].set_yticklabels(['PCA PC1', 't-SNE 1', 'UMAP 1'], fontsize=11)
+axes[0].set_title('Correlation Between First Components', fontsize=13, fontweight='bold')
+
+for i in range(3):
+    for j in range(3):
+        text = axes[0].text(j, i, f'{corr_matrix[i, j]:.3f}',
+                           ha="center", va="center", color="black", fontsize=12, fontweight='bold')
+
+plt.colorbar(im, ax=axes[0], label='Correlation')
+
+pca_full = PCA(n_components=10, random_state=42).fit(gene_expr_log)
+axes[1].plot(range(1, 11), pca_full.explained_variance_ratio_ * 100, 
+            'o-', linewidth=2, markersize=8, color='darkblue')
+axes[1].set_xlabel('Principal Component', fontsize=12, fontweight='bold')
+axes[1].set_ylabel('Variance Explained (%)', fontsize=12, fontweight='bold')
+axes[1].set_title('Scree Plot (Log-Transformed Data)', fontsize=13, fontweight='bold')
+axes[1].set_xticks(range(1, 11))
+axes[1].grid(True, alpha=0.3)
+
+cumvar = np.cumsum(pca_full.explained_variance_ratio_) * 100
+ax2 = axes[1].twinx()
+ax2.plot(range(1, 11), cumvar, 's--', linewidth=2, markersize=6, 
+        color='darkred', alpha=0.6, label='Cumulative')
+ax2.set_ylabel('Cumulative Variance (%)', fontsize=12, fontweight='bold', color='darkred')
+ax2.tick_params(axis='y', labelcolor='darkred')
+ax2.legend(loc='lower right')
+
+plt.tight_layout()
+plt.show()
+
+print(f"\n=== METHOD COMPARISON ===")
+print(f"Correlation PCA PC1 vs t-SNE 1: {np.corrcoef(pca_log_result[:, 0], tsne_log_result[:, 0])[0, 1]:.3f}")
+print(f"Correlation PCA PC1 vs UMAP 1: {np.corrcoef(pca_log_result[:, 0], umap_log_result[:, 0])[0, 1]:.3f}")
+print(f"Correlation t-SNE 1 vs UMAP 1: {np.corrcoef(tsne_log_result[:, 0], umap_log_result[:, 0])[0, 1]:.3f}")
+
+print(f"\nCumulative variance explained:")
+for i in range(5):
+    cumvar = sum(pca_full.explained_variance_ratio_[:i+1]) * 100
+    print(f"  First {i+1} PC(s): {cumvar:.2f}%")
+```
+
+
+- All three methods agree on the presence of distinct patient groupings after log-transformation
+- PCA provides the most interpretable structure (variance explained), making it ideal for initial exploration
+- t-SNE maximizes cluster separation, making visual identification of subtypes clearest
+- UMAP balances both properties, producing interpretable embeddings that preserve both local and global relationships
+
+## Comparison: Raw vs Log-Transformed Data
+```{python}
+
+fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+# Raw data PCA
+axes[0].scatter(pca_raw_result[:, 0], pca_raw_result[:, 1], 
+               alpha=0.6, s=20, c='lightcoral', edgecolors='darkred', linewidth=0.5)
+axes[0].set_xlabel(f'PC1 ({pca_raw.explained_variance_ratio_[0]*100:.1f}%)', fontsize=12, fontweight='bold')
+axes[0].set_ylabel(f'PC2 ({pca_raw.explained_variance_ratio_[1]*100:.1f}%)', fontsize=12, fontweight='bold')
+axes[0].set_title('PCA: Raw Data (Problematic)', fontsize=14, fontweight='bold', color='darkred')
+axes[0].grid(True, alpha=0.3)
+
+# Log-transformed data PCA
+axes[1].scatter(pca_log_result[:, 0], pca_log_result[:, 1], 
+               alpha=0.6, s=20, c='lightgreen', edgecolors='darkgreen', linewidth=0.5)
+axes[1].set_xlabel(f'PC1 ({pca_log.explained_variance_ratio_[0]*100:.1f}%)', fontsize=12, fontweight='bold')
+axes[1].set_ylabel(f'PC2 ({pca_log.explained_variance_ratio_[1]*100:.1f}%)', fontsize=12, fontweight='bold')
+axes[1].set_title('PCA: Log-Transformed Data (Interpretable)', fontsize=14, fontweight='bold', color='darkgreen')
+axes[1].grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+
+print(f"\n=== RAW vs LOG-TRANSFORMED COMPARISON ===")
+print(f"Raw data - PC1 variance: {pca_raw.explained_variance_ratio_[0]*100:.2f}%")
+print(f"Raw data - PC1+PC2 variance: {sum(pca_raw.explained_variance_ratio_[:2])*100:.2f}%")
+print(f"Log data - PC1 variance: {pca_log.explained_variance_ratio_[0]*100:.2f}%")
+print(f"Log data - PC1+PC2 variance: {sum(pca_log.explained_variance_ratio_[:2])*100:.2f}%")
+```
+
+The side-by-side comparison demonstrates the critical importance of log-transformation:
+
+
+
+**Issue with raw data:** Gene expression values span several orders of magnitude (0 to 2 million). In raw form, genes with high absolute expression dominate distance calculations and dimension reduction, even if their relative differences across patients are small. For example, a gene expressed at 100,000 in all patients except one patient at 110,000 contributes massively to distance calculations despite representing only a 10% change. Meanwhile, a gene expressed at 10 in half the patients and 100 in the other half (a 10-fold change indicating strong differential expression) contributes far less to distances.
+
+**How log-transformation helps:** The transformation log(X + 1) compresses the dynamic range and makes fold-changes (multiplicative differences) comparable across genes. After transformation:
+- A gene expressed at 10 vs 100 (10-fold change) → log values of 2.40 vs 4.61 (difference of 2.21)
+- A gene expressed at 1000 vs 10000 (also 10-fold change) → log values of 6.91 vs 9.21 (difference of 2.30)
+
+Both 10-fold changes now contribute similarly to distance calculations, allowing dimension reduction methods to detect meaningful biological patterns (coordinated gene expression programs defining subtypes) rather than being overwhelmed by technical scale effects.
+
+**Can z-score standardization help?** Partially, but not completely. Z-score standardization (centering each gene to mean 0, scaling to SD 1) equalizes the contribution of different genes to distance calculations, which helps prevent high-expression genes from dominating. However, it does not address two fundamental issues:
+
+1. **Distributional assumptions**: Many dimension reduction and clustering methods (especially PCA) assume approximate normality. Raw expression data is highly right-skewed; log-transformation makes it more normally distributed.
+
+2. **Interpretability**: Log-transformed values represent fold-changes, which have direct biological meaning (2-fold upregulation, 10-fold downregulation). Z-scores are dimensionless and harder to interpret biologically.
+
+In practice, combining log-transformation with z-score standardization (log-transform first, then standardize) is common in genomics pipelines. However, for visualization and clustering gene expression data, log-transformation alone is often sufficient and more interpretable than z-scoring raw data.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Clustering
+
+Having identified meaningful structure in the log-transformed data through dimension reduction, we now apply clustering algorithms to formally assign patients to breast cancer subtypes. We will use four complementary methods representing different algorithmic approaches: **K-means**, **Hierarchical Agglomerative Clustering** (bottom-up merging), **Gaussian Mixture Models** (probabilistic, assumes Gaussian clusters), and **DBSCAN**.
+
+## Clustering Method Selection hyperparameters
+
+**Method 1: K-means Clustering**
+- **Algorithm**: Iteratively assigns points to nearest centroid and updates centroids
+- **Hyperparameters**: `n_clusters` (k), `n_init=20` (number of initializations), `random_state=42`
+- **Justification**: Fast, widely used in genomics, works well for spherical clusters of similar size
+- **Strengths**: Computationally efficient, guarantees cluster assignment for all points
+- **Weaknesses**: Assumes spherical clusters, sensitive to initialization, requires pre-specified k
+
+**Method 2: Hierarchical Agglomerative Clustering**
+- **Algorithm**: Iteratively merges closest clusters using linkage criterion
+- **Hyperparameters**: `linkage='ward'` (minimizes within-cluster variance), `n_clusters` (k)
+- **Justification**: Produces dendrogram showing cluster relationships, doesn't assume cluster shape
+- **Strengths**: Reveals hierarchical structure, deterministic given linkage method
+- **Weaknesses**: Computationally expensive (O(n²) for Ward linkage), sensitive to noise
+
+**Method 3: Gaussian Mixture Models (GMM)**
+- **Algorithm**: Expectation-Maximization to fit k Gaussian distributions
+- **Hyperparameters**: `n_components` (k), `covariance_type='full'` (allows elliptical clusters), `random_state=42`
+- **Justification**: Provides soft clustering (probabilities), can model elliptical clusters
+- **Strengths**: Probabilistic framework, can capture cluster uncertainty, flexible cluster shapes
+- **Weaknesses**: Assumes Gaussian distributions, sensitive to initialization, can overfit
+
+**Method 4: DBSCAN (Density-Based Spatial Clustering)**
+- **Algorithm**: Groups points in dense regions, marks low-density points as outliers
+- **Hyperparameters**: `eps=2.5` (neighborhood radius), `min_samples=10` (minimum cluster size)
+- **Justification**: Can find arbitrary-shaped clusters, identifies outliers naturally
+- **Strengths**: No need to pre-specify k, robust to outliers, finds non-spherical clusters
+- **Weaknesses**: Sensitive to hyperparameters, struggles with varying density clusters
+
+**Dimension Reduction for Clustering Input:**
+
+Based on the scree plot showing that the first 10 PCs capture ~42% of variance with an elbow around PC3-4, we use **PCA 10D** as our primary clustering input. This balances information retention with noise reduction. We also compare clustering on **2D UMAP embeddings** to assess whether the non-linear structure captured by UMAP improves clustering performance.
+```{python}
+
+from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN
+from sklearn.mixture import GaussianMixture
+
+
+pca_10d = PCA(n_components=10, random_state=42)
+pca_10d_result = pca_10d.fit_transform(gene_expr_log)
+
+print("=== CLUSTERING INPUT PREPARATION ===")
+print(f"PCA 10D shape: {pca_10d_result.shape}")
+print(f"t-SNE 2D shape: {tsne_log_result.shape}")
+print(f"UMAP 2D shape: {umap_log_result.shape}")
+print(f"Variance explained by 10 PCs: {sum(pca_10d.explained_variance_ratio_)*100:.2f}%")
+```
+
+## Clustering Results for k = 2, 3, 4, 5
+
+We apply all four clustering methods to PCA 10D embeddings for k = 2, 3, 4, 5 clusters. (Note: DBSCAN determines k automatically based on density, so we run it separately.)
+```{python}
+
+clustering_results = {}
+
+fig, axes = plt.subplots(4, 3, figsize=(18, 20))
+
+for idx, k in enumerate([2, 3, 4, 5]):
+    # K-means on PCA 10D
+    kmeans = KMeans(n_clusters=k, n_init=20, random_state=42)
+    kmeans_labels = kmeans.fit_predict(pca_10d_result)
+    clustering_results[f'kmeans_pca10d_k{k}'] = kmeans_labels
+    
+    # Hierarchical on PCA 10D
+    hierarchical = AgglomerativeClustering(n_clusters=k, linkage='ward')
+    hierarchical_labels = hierarchical.fit_predict(pca_10d_result)
+    clustering_results[f'hierarchical_pca10d_k{k}'] = hierarchical_labels
+    
+    # GMM on PCA 10D
+    gmm = GaussianMixture(n_components=k, covariance_type='full', random_state=42)
+    gmm_labels = gmm.fit_predict(pca_10d_result)
+    clustering_results[f'gmm_pca10d_k{k}'] = gmm_labels
+    
+    # Plot K-means results (using PCA 2D for visualization)
+    axes[idx, 0].scatter(pca_log_result[:, 0], pca_log_result[:, 1],
+                        c=kmeans_labels, cmap='tab10', alpha=0.6, 
+                        s=20, edgecolors='black', linewidth=0.3)
+    axes[idx, 0].set_xlabel('PC1', fontsize=10, fontweight='bold')
+    axes[idx, 0].set_ylabel('PC2', fontsize=10, fontweight='bold')
+    axes[idx, 0].set_title(f'K-means (k={k})', fontsize=11, fontweight='bold')
+    axes[idx, 0].grid(True, alpha=0.3)
+    
+    # Plot Hierarchical results
+    axes[idx, 1].scatter(pca_log_result[:, 0], pca_log_result[:, 1],
+                        c=hierarchical_labels, cmap='tab10', alpha=0.6,
+                        s=20, edgecolors='black', linewidth=0.3)
+    axes[idx, 1].set_xlabel('PC1', fontsize=10, fontweight='bold')
+    axes[idx, 1].set_ylabel('PC2', fontsize=10, fontweight='bold')
+    axes[idx, 1].set_title(f'Hierarchical (k={k})', fontsize=11, fontweight='bold')
+    axes[idx, 1].grid(True, alpha=0.3)
+    
+    # Plot GMM results
+    axes[idx, 2].scatter(pca_log_result[:, 0], pca_log_result[:, 1],
+                        c=gmm_labels, cmap='tab10', alpha=0.6,
+                        s=20, edgecolors='black', linewidth=0.3)
+    axes[idx, 2].set_xlabel('PC1', fontsize=10, fontweight='bold')
+    axes[idx, 2].set_ylabel('PC2', fontsize=10, fontweight='bold')
+    axes[idx, 2].set_title(f'GMM (k={k})', fontsize=11, fontweight='bold')
+    axes[idx, 2].grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+
+# Print cluster sizes
+for k in [2, 3, 4, 5]:
+    print(f"\n=== k={k} CLUSTER SIZES (PCA 10D) ===")
+    kmeans_sizes = pd.Series(clustering_results[f'kmeans_pca10d_k{k}']).value_counts().sort_index()
+    hierarchical_sizes = pd.Series(clustering_results[f'hierarchical_pca10d_k{k}']).value_counts().sort_index()
+    gmm_sizes = pd.Series(clustering_results[f'gmm_pca10d_k{k}']).value_counts().sort_index()
+    print(f"K-means:      {kmeans_sizes.to_dict()}")
+    print(f"Hierarchical: {hierarchical_sizes.to_dict()}")
+    print(f"GMM:          {gmm_sizes.to_dict()}")
+```
+```{python}
+
+dbscan = DBSCAN(eps=2.5, min_samples=10)
+dbscan_labels = dbscan.fit_predict(pca_10d_result)
+clustering_results['dbscan_pca10d'] = dbscan_labels
+
+n_clusters_dbscan = len(set(dbscan_labels)) - (1 if -1 in dbscan_labels else 0)
+n_outliers = np.sum(dbscan_labels == -1)
+
+print(f"\n=== DBSCAN RESULTS (PCA 10D) ===")
+print(f"Number of clusters found: {n_clusters_dbscan}")
+print(f"Number of outliers: {n_outliers}")
+print(f"Cluster sizes:")
+dbscan_sizes = pd.Series(dbscan_labels).value_counts().sort_index()
+print(dbscan_sizes.to_dict())
+
+
+fig, axes = plt.subplots(1, 3, figsize=(20, 5))
+
+# PCA visualization
+scatter1 = axes[0].scatter(pca_log_result[:, 0], pca_log_result[:, 1],
+                          c=dbscan_labels, cmap='tab10', alpha=0.6,
+                          s=20, edgecolors='black', linewidth=0.3)
+axes[0].set_xlabel('PC1', fontsize=12, fontweight='bold')
+axes[0].set_ylabel('PC2', fontsize=12, fontweight='bold')
+axes[0].set_title(f'DBSCAN in PCA Space\n({n_clusters_dbscan} clusters, {n_outliers} outliers)', 
+                 fontsize=13, fontweight='bold')
+axes[0].grid(True, alpha=0.3)
+
+# t-SNE visualization
+scatter2 = axes[1].scatter(tsne_log_result[:, 0], tsne_log_result[:, 1],
+                          c=dbscan_labels, cmap='tab10', alpha=0.6,
+                          s=20, edgecolors='black', linewidth=0.3)
+axes[1].set_xlabel('t-SNE 1', fontsize=12, fontweight='bold')
+axes[1].set_ylabel('t-SNE 2', fontsize=12, fontweight='bold')
+axes[1].set_title(f'DBSCAN in t-SNE Space\n({n_clusters_dbscan} clusters, {n_outliers} outliers)', 
+                 fontsize=13, fontweight='bold')
+axes[1].grid(True, alpha=0.3)
+
+# UMAP visualization
+scatter3 = axes[2].scatter(umap_log_result[:, 0], umap_log_result[:, 1],
+                          c=dbscan_labels, cmap='tab10', alpha=0.6,
+                          s=20, edgecolors='black', linewidth=0.3)
+axes[2].set_xlabel('UMAP 1', fontsize=12, fontweight='bold')
+axes[2].set_ylabel('UMAP 2', fontsize=12, fontweight='bold')
+axes[2].set_title(f'DBSCAN in UMAP Space\n({n_clusters_dbscan} clusters, {n_outliers} outliers)', 
+                 fontsize=13, fontweight='bold')
+axes[2].grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+```
+```{python}
+
+fig, axes = plt.subplots(3, 4, figsize=(18, 12))
+
+for idx, k in enumerate([2, 3, 4, 5]):
+    # K-means on UMAP 2D
+    kmeans_umap = KMeans(n_clusters=k, n_init=20, random_state=42)
+    kmeans_umap_labels = kmeans_umap.fit_predict(umap_log_result)
+    clustering_results[f'kmeans_umap2d_k{k}'] = kmeans_umap_labels
+    
+    # Hierarchical on UMAP 2D
+    hierarchical_umap = AgglomerativeClustering(n_clusters=k, linkage='ward')
+    hierarchical_umap_labels = hierarchical_umap.fit_predict(umap_log_result)
+    clustering_results[f'hierarchical_umap2d_k{k}'] = hierarchical_umap_labels
+    
+    # GMM on UMAP 2D
+    gmm_umap = GaussianMixture(n_components=k, covariance_type='full', random_state=42)
+    gmm_umap_labels = gmm_umap.fit_predict(umap_log_result)
+    clustering_results[f'gmm_umap2d_k{k}'] = gmm_umap_labels
+    
+    # K-means plot
+    axes[0, idx].scatter(umap_log_result[:, 0], umap_log_result[:, 1],
+                        c=kmeans_umap_labels, cmap='tab10', alpha=0.6,
+                        s=20, edgecolors='black', linewidth=0.3)
+    axes[0, idx].set_xlabel('UMAP 1', fontsize=10, fontweight='bold')
+    axes[0, idx].set_ylabel('UMAP 2', fontsize=10, fontweight='bold')
+    axes[0, idx].set_title(f'K-means (k={k})', fontsize=11, fontweight='bold')
+    axes[0, idx].grid(True, alpha=0.3)
+    
+    # Hierarchical plot
+    axes[1, idx].scatter(umap_log_result[:, 0], umap_log_result[:, 1],
+                        c=hierarchical_umap_labels, cmap='tab10', alpha=0.6,
+                        s=20, edgecolors='black', linewidth=0.3)
+    axes[1, idx].set_xlabel('UMAP 1', fontsize=10, fontweight='bold')
+    axes[1, idx].set_ylabel('UMAP 2', fontsize=10, fontweight='bold')
+    axes[1, idx].set_title(f'Hierarchical (k={k})', fontsize=11, fontweight='bold')
+    axes[1, idx].grid(True, alpha=0.3)
+    
+    # GMM plot
+    axes[2, idx].scatter(umap_log_result[:, 0], umap_log_result[:, 1],
+                        c=gmm_umap_labels, cmap='tab10', alpha=0.6,
+                        s=20, edgecolors='black', linewidth=0.3)
+    axes[2, idx].set_xlabel('UMAP 1', fontsize=10, fontweight='bold')
+    axes[2, idx].set_ylabel('UMAP 2', fontsize=10, fontweight='bold')
+    axes[2, idx].set_title(f'GMM (k={k})', fontsize=11, fontweight='bold')
+    axes[2, idx].grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+```
+
+## Quantitative Comparison Across Methods
+```{python}
+#| label: clustering-comparison-metrics
+from sklearn.metrics import adjusted_rand_score, silhouette_score
+
+print("=== QUANTITATIVE CLUSTERING COMPARISON ===\n")
+
+
+for k in [2, 3, 4, 5]:
+    print(f"k = {k}:")
+    print("  PCA 10D Input:")
+    
+    
+    ari_km_hc = adjusted_rand_score(
+        clustering_results[f'kmeans_pca10d_k{k}'],
+        clustering_results[f'hierarchical_pca10d_k{k}']
+    )
+    ari_km_gmm = adjusted_rand_score(
+        clustering_results[f'kmeans_pca10d_k{k}'],
+        clustering_results[f'gmm_pca10d_k{k}']
+    )
+    ari_hc_gmm = adjusted_rand_score(
+        clustering_results[f'hierarchical_pca10d_k{k}'],
+        clustering_results[f'gmm_pca10d_k{k}']
+    )
+    
+    print(f"    ARI (K-means vs Hierarchical): {ari_km_hc:.3f}")
+    print(f"    ARI (K-means vs GMM): {ari_km_gmm:.3f}")
+    print(f"    ARI (Hierarchical vs GMM): {ari_hc_gmm:.3f}")
+    
+    # Silhouette scores
+    sil_km = silhouette_score(pca_10d_result, clustering_results[f'kmeans_pca10d_k{k}'])
+    sil_hc = silhouette_score(pca_10d_result, clustering_results[f'hierarchical_pca10d_k{k}'])
+    sil_gmm = silhouette_score(pca_10d_result, clustering_results[f'gmm_pca10d_k{k}'])
+    
+    print(f"    Silhouette: K-means={sil_km:.3f}, Hierarchical={sil_hc:.3f}, GMM={sil_gmm:.3f}")
+    
+    print("  UMAP 2D Input:")
+    
+    # Agreement on UMAP
+    ari_km_hc_umap = adjusted_rand_score(
+        clustering_results[f'kmeans_umap2d_k{k}'],
+        clustering_results[f'hierarchical_umap2d_k{k}']
+    )
+    ari_km_gmm_umap = adjusted_rand_score(
+        clustering_results[f'kmeans_umap2d_k{k}'],
+        clustering_results[f'gmm_umap2d_k{k}']
+    )
+    ari_hc_gmm_umap = adjusted_rand_score(
+        clustering_results[f'hierarchical_umap2d_k{k}'],
+        clustering_results[f'gmm_umap2d_k{k}']
+    )
+    
+    print(f"    ARI (K-means vs Hierarchical): {ari_km_hc_umap:.3f}")
+    print(f"    ARI (K-means vs GMM): {ari_km_gmm_umap:.3f}")
+    print(f"    ARI (Hierarchical vs GMM): {ari_hc_gmm_umap:.3f}")
+    
+    # Silhouette scores on UMAP
+    sil_km_umap = silhouette_score(umap_log_result, clustering_results[f'kmeans_umap2d_k{k}'])
+    sil_hc_umap = silhouette_score(umap_log_result, clustering_results[f'hierarchical_umap2d_k{k}'])
+    sil_gmm_umap = silhouette_score(umap_log_result, clustering_results[f'gmm_umap2d_k{k}'])
+    
+    print(f"    Silhouette: K-means={sil_km_umap:.3f}, Hierarchical={sil_hc_umap:.3f}, GMM={sil_gmm_umap:.3f}")
+    print()
+```
+
+## Clustering Comparison and Interpretation
+
+### Visual Observations
+
+**k = 2**: All three methods (K-means, Hierarchical, GMM) produce highly concordant two-cluster solutions, clearly separating the left cluster from the right cluster in PCA space. This visual agreement is striking and suggests a robust primary division in the data.
+
+**k = 3**: Methods begin to diverge. All three identify a small left cluster (~185-210 patients), but disagree on how to split the large right cluster. K-means creates two roughly equal splits, while Hierarchical and GMM produce more unbalanced divisions. This suggests the two-way split of the right cluster may be less definitive.
+
+**k = 4**: Further subdivision reveals more methodological disagreement. All methods identify 4 spatially distinct regions, but assign boundaries differently. The cluster sizes become more balanced (150-400 patients per cluster).
+
+**k = 5**: Maximum granularity tested. Methods show substantial disagreement in cluster boundaries, with some methods creating very small clusters (Hierarchical: 82 patients; GMM: 116 patients), suggesting potential overfitting.
+
+**DBSCAN Results**: DBSCAN with `eps=2.5, min_samples=10` classified all 1,043 patients as outliers (no clusters found). This indicates that the hyperparameters are too stringent for this dataset's density structure. While DBSCAN can theoretically find arbitrary-shaped clusters, it requires careful tuning of epsilon and min_samples, which is dataset-dependent. The failure to find clusters here suggests that breast cancer subtypes in gene expression space do not form density-separated islands but rather exist along a continuum with gradual transitions.
+
+### Quantitative Analysis
+
+**Method Agreement (ARI)**:
+
+- **k=2**: Excellent agreement across all methods on PCA 10D (ARI: 0.74-0.90) and perfect agreement on UMAP 2D (ARI: 1.00). This unanimity strongly supports k=2 as representing a fundamental data structure.
+
+- **k=3-5**: Moderate agreement (ARI: 0.44-0.76), indicating methods capture partially overlapping but distinct aspects of the subdivision. The lower agreement suggests these finer subdivisions are less definitive.
+
+**Dimension Reduction Impact**:
+
+- **UMAP 2D** consistently produces higher method agreement (ARI ≈ 1.0 for k=2; 0.4-0.8 for k≥3) and dramatically higher silhouette scores (0.45-0.91) compared to PCA 10D (0.15-0.34).
+
+- This occurs because UMAP's non-linear transformation creates well-separated, compact clusters in 2D space, making clustering easier. However, this does not necessarily mean UMAP-based clusters are more biologically meaningful—the improved separation could reflect UMAP's tendency to "force" separation even in continuous data.
+
+- **PCA 10D** produces lower silhouette scores but may better preserve the true (possibly continuous) structure of gene expression space. The moderate silhouette scores (0.15-0.34) suggest clusters have fuzzy boundaries with overlap, which is biologically plausible for cancer subtypes.
+
+**Cluster Quality (Silhouette Scores)**:
+
+- **k=2** achieves the highest silhouette scores across all methods (PCA: 0.31-0.34; UMAP: 0.91), indicating well-separated, compact clusters.
+
+- **k≥3** shows declining silhouette scores on PCA 10D (dropping to 0.15-0.22), suggesting that additional subdivisions create less distinct clusters with more ambiguous boundaries.
+
+- The sharp drop in silhouette score from k=2 to k=3 (PCA: 0.34→0.22, ~35% decrease) provides quantitative evidence that the primary structure is binary.
+
+**Clustering Method Differences**:
+
+- **K-means vs Hierarchical** (Ward linkage): High agreement for k=2 (ARI=0.90), moderate for k≥3 (ARI=0.50-0.58). Both methods perform similarly, with Hierarchical slightly more sensitive to local density variations.
+
+- **K-means vs GMM**: Moderate-to-high agreement (ARI=0.50-0.83). GMM's probabilistic framework allows elliptical clusters, sometimes producing different boundaries than spherical K-means assumptions.
+
+- **Hierarchical vs GMM**: Variable agreement (ARI=0.45-0.74), lowest overall. These fundamentally different approaches (agglomerative vs probabilistic) capture distinct aspects of cluster structure.
+
+
+---
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Model Selection: Stability-Based Approach
+
+To rigorously determine the optimal number of breast cancer subtypes (k), we employ a stability-based model selection framework. This approach tests whether clusterings are robust to data perturbations—a hallmark of true underlying structure versus algorithmic artifacts.
+
+## Stability Analysis Methodology
+
+**Core Principle**: If k truly represents the underlying structure, clustering should produce consistent results across different subsets of patients. Spurious clusters will vary dramatically with small data changes.
+
+**Algorithm**:
+1. For each candidate k ∈ {2, 3, 4, 5, 6, 7, 8}
+2. Generate B = 50 random subsamples of 80% of patients (834 patients per subsample)
+3. Apply K-means clustering (with `n_init=20`, `random_state=42`) to each subsample's PCA 10D representation
+4. For all pairs of subsamples (1,225 pairs total):
+   - Identify overlapping patients (those in both subsamples)
+   - Compare cluster assignments on overlapping patients using:
+     - **Adjusted Rand Index (ARI)**: Measures overall clustering agreement, corrected for chance (ranges 0-1, higher is better)
+     - **Jaccard Similarity**: For each cluster, finds best-matching cluster in other subsample and computes intersection-over-union; reports mean across all clusters (ranges 0-1, higher is better)
+5. Compute mean and standard deviation of ARI and Jaccard across all pairs
+6. Optimal k maximizes stability (high mean, low variance)
+
+
+```{python}
+
+from sklearn.utils import resample
+from sklearn.metrics import adjusted_rand_score
+import itertools
+
+def stability_analysis_subsampling(data, k_range, n_subsamples=50, subsample_frac=0.8):
+    
+    n_samples = data.shape[0]
+    subsample_size = int(n_samples * subsample_frac)
+    
+    results = {k: {'ari': [], 'jaccard': []} for k in k_range}
+    
+    
+    for k in k_range:
+        print(f"  k={k}...", end=" ")
+        
+        # Store clustering results for each subsample
+        subsamples_indices = []
+        subsamples_labels = []
+        
+        for i in range(n_subsamples):
+            # Create random subsample
+            indices = np.random.choice(n_samples, size=subsample_size, replace=False)
+            data_sub = data[indices]
+            
+            # Cluster the subsample
+            kmeans = KMeans(n_clusters=k, n_init=20, random_state=42)
+            labels = kmeans.fit_predict(data_sub)
+            
+            subsamples_indices.append(indices)
+            subsamples_labels.append(labels)
+        
+        # Compare pairs of subsamples on their OVERLAPPING patients
+        pair_count = 0
+        for i, j in itertools.combinations(range(n_subsamples), 2):
+            # Find overlapping patients
+            overlap_idx = np.intersect1d(subsamples_indices[i], subsamples_indices[j])
+            
+            if len(overlap_idx) < 100:  # Need sufficient overlap
+                continue
+            
+            # Map overlap indices back to positions in subsamples
+            pos_i = np.array([np.where(subsamples_indices[i] == idx)[0][0] for idx in overlap_idx])
+            pos_j = np.array([np.where(subsamples_indices[j] == idx)[0][0] for idx in overlap_idx])
+            
+            labels_i_overlap = subsamples_labels[i][pos_i]
+            labels_j_overlap = subsamples_labels[j][pos_j]
+            
+            # Compute ARI
+            ari = adjusted_rand_score(labels_i_overlap, labels_j_overlap)
+            results[k]['ari'].append(ari)
+            
+            # Compute Jaccard
+            jaccard_scores = []
+            for c in range(k):
+                members_i = np.where(labels_i_overlap == c)[0]
+                
+                # Find best matching cluster in j
+                best_jaccard = 0
+                for c2 in range(k):
+                    members_j = np.where(labels_j_overlap == c2)[0]
+                    
+                    intersection = len(np.intersect1d(members_i, members_j))
+                    union = len(np.union1d(members_i, members_j))
+                    
+                    if union > 0:
+                        jaccard = intersection / union
+                        best_jaccard = max(best_jaccard, jaccard)
+                
+                jaccard_scores.append(best_jaccard)
+            
+            results[k]['jaccard'].append(np.mean(jaccard_scores))
+            pair_count += 1
+        
+        print(f"✓ ({pair_count} pairs)")
+    
+    return results
+
+# Run stability analysis
+np.random.seed(42)
+k_range = [2, 3, 4, 5, 6, 7, 8]
+stability_results = stability_analysis_subsampling(pca_10d_result, k_range, n_subsamples=50)
+
+# Compute summary statistics
+stability_summary = []
+for k in k_range:
+    ari_scores = stability_results[k]['ari']
+    jaccard_scores = stability_results[k]['jaccard']
+    
+    stability_summary.append({
+        'k': k,
+        'mean_ari': np.mean(ari_scores),
+        'std_ari': np.std(ari_scores),
+        'mean_jaccard': np.mean(jaccard_scores),
+        'std_jaccard': np.std(jaccard_scores),
+        'n_comparisons': len(ari_scores)
+    })
+
+stability_df = pd.DataFrame(stability_summary)
+print("\n=== SUBSAMPLING-BASED STABILITY ANALYSIS ===")
+print(stability_df.to_string(index=False))
+```
+```{python}
+#| label: stability-plots
+#| fig-cap: "Stability analysis results using subsampling. Top: Mean ARI across subsample pairs with error bars (±1 SD). Bottom: Mean Jaccard similarity. k=2 shows highest stability with sharp decline after k=2, suggesting two robust primary subtypes."
+
+fig, axes = plt.subplots(2, 1, figsize=(12, 10))
+
+# ARI plot
+axes[0].errorbar(stability_df['k'], stability_df['mean_ari'], 
+                yerr=stability_df['std_ari'],
+                marker='o', markersize=10, linewidth=2, capsize=5,
+                color='darkblue', ecolor='lightblue', label='Mean ARI ± SD')
+axes[0].axhline(0.9, color='red', linestyle='--', linewidth=1.5, 
+               alpha=0.7, label='High stability threshold (0.9)')
+axes[0].set_xlabel('Number of Clusters (k)', fontsize=13, fontweight='bold')
+axes[0].set_ylabel('Mean Adjusted Rand Index', fontsize=13, fontweight='bold')
+axes[0].set_title('Clustering Stability: Adjusted Rand Index', fontsize=14, fontweight='bold')
+axes[0].set_xticks(k_range)
+axes[0].grid(True, alpha=0.3)
+axes[0].legend(fontsize=11)
+axes[0].set_ylim(0.6, 1.05)
+
+# Jaccard plot
+axes[1].errorbar(stability_df['k'], stability_df['mean_jaccard'],
+                yerr=stability_df['std_jaccard'],
+                marker='s', markersize=10, linewidth=2, capsize=5,
+                color='darkgreen', ecolor='lightgreen', label='Mean Jaccard ± SD')
+axes[1].axhline(0.9, color='red', linestyle='--', linewidth=1.5,
+               alpha=0.7, label='High stability threshold (0.9)')
+axes[1].set_xlabel('Number of Clusters (k)', fontsize=13, fontweight='bold')
+axes[1].set_ylabel('Mean Jaccard Similarity', fontsize=13, fontweight='bold')
+axes[1].set_title('Clustering Stability: Jaccard Similarity', fontsize=14, fontweight='bold')
+axes[1].set_xticks(k_range)
+axes[1].grid(True, alpha=0.3)
+axes[1].legend(fontsize=11)
+axes[1].set_ylim(0.6, 1.05)
+
+plt.tight_layout()
+plt.show()
+```
+
+## Model Selection Decision
+
+Based on the comprehensive stability analysis, I conclude that **k = 2** is the optimal number of breast cancer subtypes, with **k = 3** as my second-best guess.
+
+### Interpretation of Stability Results
+
+The subsampling analysis reveals a clear pattern:
+
+- **k = 2**: Mean ARI ≈ 0.996, Mean Jaccard ≈ 0.998 (near-perfect stability)
+- **k = 3**: Mean ARI ≈ 0.956, Mean Jaccard ≈ 0.978 (excellent but noticeable decline)
+- **k = 4**: Mean ARI ≈ 0.951, Mean Jaccard ≈ 0.966 (good stability, further decline)
+- **k ≥ 5**: Progressive degradation (ARI < 0.90, Jaccard < 0.95)
+
+### Justification for k = 2 (Best Guess)
+
+**1. Exceptional Stability**
+
+k = 2 achieves near-perfect stability (ARI = 0.996, Jaccard = 0.998) with minimal variance (SD < 0.01). This means that regardless of which 20% of patients are excluded, K-means consistently recovers the same two-cluster solution. This level of reproducibility is the hallmark of robust underlying structure rather than algorithmic artifact.
+
+**2. Sharp Stability Decline**
+
+The drop from k=2 to k=3 represents a 4% decrease in ARI (0.996 → 0.956) and 2% decrease in Jaccard (0.998 → 0.978). While k=3 still shows good stability, this sharp decline indicates that the third cluster is less definitive than the primary two-way split.
+
+**3. Cross-Method Consensus**
+
+All clustering methods (K-means, Hierarchical, GMM) across both dimension reduction approaches (PCA 10D, UMAP 2D) agree strongly on the k=2 solution (ARI > 0.90 on PCA, ARI = 1.00 on UMAP). This unanimous agreement across diverse algorithmic approaches provides converging evidence.
+
+**4. Optimal Separation Quality**
+
+k=2 achieves the highest silhouette scores across all tested values (0.31-0.34 on PCA 10D; 0.91 on UMAP 2D). The 35% drop in silhouette score from k=2 to k=3 on PCA indicates that subdividing beyond two clusters creates more ambiguous boundaries.
+
+**5. Biological Plausibility**
+
+The k=2 solution likely represents the fundamental luminal vs. basal-like distinction, the most robust and clinically established molecular classification in breast cancer. This binary split has been consistently identified across multiple genomic platforms (miRNA, RNASeq, proteomics) and correlates with distinct treatment responses and prognoses.
+
+**6. Cluster Size Balance**
+
+The k=2 solution produces reasonably balanced clusters (205 vs. 838 patients for K-means on PCA 10D), avoiding the pitfall of creating tiny clusters that might represent outliers rather than true subtypes.
+
+### Justification for k = 3 (Second Guess)
+
+**1. Still High Stability**
+
+k=3 maintains excellent stability (ARI = 0.956, Jaccard = 0.978), well above typical acceptability thresholds (>0.8). The stability is only marginally lower than k=2, suggesting three clusters are also well-supported by the data.
+
+**2. Clinical Relevance**
+
+Three subtypes could represent hormone receptor positive (luminal), HER2-enriched, and triple-negative (basal-like) categories—a common clinical grouping that provides more granular treatment guidance than the binary luminal/basal split.
+
+**3. Visual Coherence**
+
+In both PCA and UMAP visualizations, three distinct spatial regions are visible: a left cluster, upper-right cluster, and lower-right cluster. This visual separation supports the biological plausibility of three subtypes.
+
+**4. Modest Silhouette Decline**
+
+While silhouette scores drop from k=2 to k=3 (0.34 → 0.22 on PCA), they remain positive, indicating that the three clusters are still more similar within-cluster than between-cluster on average.
+
+**5. Conservative Overfitting Protection**
+
+If the true structure has 3-4 subtypes and we choose k=2, we collapse potentially meaningful heterogeneity. If the true structure is binary and we choose k=3, the third cluster likely represents a subdivision of one of the two main groups—a less severe error. Thus, k=3 hedges against underfitting.
+
+### Why Not k = 4?
+
+While k=4 aligns with the PAM50 four-subtype classification (Luminal A, Luminal B, HER2-enriched, Basal-like), the data-driven evidence is weaker:
+
+- **Similar stability to k=3**: ARI and Jaccard for k=4 (0.951, 0.966) are nearly identical to k=3 (0.956, 0.978), suggesting k=4 is not capturing substantially more robust structure
+- **No clear "elbow"**: Stability declines gradually from k=3 → k=4 → k=5 without a sharp drop indicating optimal k
+- **Lower method agreement**: Clustering algorithms show more disagreement at k=4 (ARI = 0.48-0.65) than k=2 or k=3
+- **Dataset limitations**: Our RNASeq data may not have sufficient signal to distinguish all four PAM50 subtypes, which were originally defined using miRNA arrays
+
+### Why Not k ≥ 5?
+
+Beyond k=5, stability degrades noticeably:
+
+- **k=5**: ARI drops to 0.873, Jaccard to 0.901 (below 0.9 threshold)
+- **k≥6**: Continued decline with increasing variance
+- **Biological implausibility**: While breast cancer is heterogeneous, 5+ major subtypes are not well-established in the literature
+- **Overfitting signals**: Small cluster sizes (e.g., Hierarchical creates an 82-patient cluster at k=5) and high variance suggest we're splitting noise rather than signal
+
+### Decision Rationale
+
+I prioritize **data-driven stability over biological assumptions**. While clinical knowledge suggests 4-5 breast cancer subtypes exist, this particular dataset—with 5,000 variance-filtered genes from RNASeq—most robustly supports a binary classification. The k=2 solution achieves:
+
+- Near-perfect stability across subsampling (ARI > 0.99)
+- Universal agreement across clustering methods
+- Optimal separation quality (highest silhouette scores)
+- Clear visual distinction in all dimension reduction spaces
+
+The k=3 solution represents my second-best guess because it:
+
+- Maintains high stability (ARI > 0.95)
+- Adds clinically interpretable granularity
+- Shows clear visual support in reduced-dimension plots
+- Hedges against potential underfitting if true k > 2
+
+This balanced approach acknowledges that breast cancer biology may be more complex than k=2, while respecting the statistical evidence that finer subdivisions (k≥4) are less robustly supported by this particular dataset.
+
+---
+
+# Subtype Label Predictions
+
+Based on the stability analysis and comprehensive clustering comparison, I generate final subtype predictions for k=2 (best guess) and k=3 (second guess).
+
+## Prediction Methodology
+
+**Decision Criteria for Final Labels:**
+
+1. **Prioritize stability**: Use K-means on PCA 10D, which showed highest stability in subsampling analysis
+2. **Maximize reproducibility**: Use fixed `random_state=42` and `n_init=20` for deterministic results
+3. **Preserve full information**: Cluster on 10 PCs (42% variance) rather than 2D projections to avoid information loss
+4. **Cross-validate visually**: Verify clusters align with visual structure in PCA, t-SNE, and UMAP spaces
+
+**Why K-means on PCA 10D?**
+
+- K-means showed highest agreement with other methods (mean ARI = 0.69 across k=2-5)
+- PCA 10D preserves more information than 2D embeddings (42% vs. 22% variance)
+- K-means is deterministic (given random_state) and computationally efficient
+- Stability analysis was conducted on this exact configuration, ensuring consistency
+```{python}
+#| label: final-predictions
+import os
+
+# Generate final clustering labels using K-means on PCA 10D
+# Best guess: k=2
+kmeans_k2 = KMeans(n_clusters=2, n_init=20, random_state=42)
+best_guess_labels = kmeans_k2.fit_predict(pca_10d_result)
+
+# Second guess: k=3
+kmeans_k3 = KMeans(n_clusters=3, n_init=20, random_state=42)
+second_guess_labels = kmeans_k3.fit_predict(pca_10d_result)
+
+# Create results dataframe
+predicted_subtypes = pd.DataFrame({
+    'best_guess': best_guess_labels,
+    'second_guess': second_guess_labels
+})
+
+# Save to CSV
+if not os.path.exists(RESULTS_PATH):
+    os.makedirs(RESULTS_PATH)
+    
+predicted_subtypes.to_csv(oj(RESULTS_PATH, "best_subtype_labels.csv"), index=False)
+
+print("=== FINAL SUBTYPE PREDICTIONS ===")
+print(f"Saved to: {oj(RESULTS_PATH, 'best_subtype_labels.csv')}")
+print(f"\nBest guess (k=2) distribution:")
+print(pd.Series(best_guess_labels).value_counts().sort_index())
+print(f"\nSecond guess (k=3) distribution:")
+print(pd.Series(second_guess_labels).value_counts().sort_index())
+
+# Verify alignment with original data order
+print(f"\nVerification:")
+print(f"Original data shape: {gene_expr.shape}")
+print(f"Predictions shape: {predicted_subtypes.shape}")
+print(f"Index alignment: {(predicted_subtypes.index == gene_expr.index).all()}")
+```
+```{python}
+
+fig, axes = plt.subplots(2, 3, figsize=(20, 12))
+
+# k=2 visualizations
+# PCA
+scatter1 = axes[0, 0].scatter(pca_log_result[:, 0], pca_log_result[:, 1],
+                             c=best_guess_labels, cmap='Set1', alpha=0.7,
+                             s=25, edgecolors='black', linewidth=0.5)
+axes[0, 0].set_xlabel('PC1', fontsize=12, fontweight='bold')
+axes[0, 0].set_ylabel('PC2', fontsize=12, fontweight='bold')
+axes[0, 0].set_title('Best Guess (k=2) - PCA Space', fontsize=13, fontweight='bold')
+axes[0, 0].grid(True, alpha=0.3)
+cbar1 = plt.colorbar(scatter1, ax=axes[0, 0], ticks=[0,1])
+cbar1.set_label('Subtype', fontsize=11, fontweight='bold')
+
+# t-SNE
+scatter2 = axes[0, 1].scatter(tsne_log_result[:, 0], tsne_log_result[:, 1],
+                             c=best_guess_labels, cmap='Set1', alpha=0.7,
+                             s=25, edgecolors='black', linewidth=0.5)
+axes[0, 1].set_xlabel('t-SNE 1', fontsize=12, fontweight='bold')
+axes[0, 1].set_ylabel('t-SNE 2', fontsize=12, fontweight='bold')
+axes[0, 1].set_title('Best Guess (k=2) - t-SNE Space', fontsize=13, fontweight='bold')
+axes[0, 1].grid(True, alpha=0.3)
+cbar2 = plt.colorbar(scatter2, ax=axes[0, 1], ticks=[0,1])
+cbar2.set_label('Subtype', fontsize=11, fontweight='bold')
+
+# UMAP
+scatter3 = axes[0, 2].scatter(umap_log_result[:, 0], umap_log_result[:, 1],
+                             c=best_guess_labels, cmap='Set1', alpha=0.7,
+                             s=25, edgecolors='black', linewidth=0.5)
+axes[0, 2].set_xlabel('UMAP 1', fontsize=12, fontweight='bold')
+axes[0, 2].set_ylabel('UMAP 2', fontsize=12, fontweight='bold')
+axes[0, 2].set_title('Best Guess (k=2) - UMAP Space', fontsize=13, fontweight='bold')
+axes[0, 2].grid(True, alpha=0.3)
+cbar3 = plt.colorbar(scatter3, ax=axes[0, 2], ticks=[0,1])
+cbar3.set_label('Subtype', fontsize=11, fontweight='bold')
+
+# k=3 visualizations
+# PCA
+scatter4 = axes[1, 0].scatter(pca_log_result[:, 0], pca_log_result[:, 1],
+                             c=second_guess_labels, cmap='Set2', alpha=0.7,
+                             s=25, edgecolors='black', linewidth=0.5)
+axes[1, 0].set_xlabel('PC1', fontsize=12, fontweight='bold')
+axes[1, 0].set_ylabel('PC2', fontsize=12, fontweight='bold')
+axes[1, 0].set_title('Second Guess (k=3) - PCA Space', fontsize=13, fontweight='bold')
+axes[1, 0].grid(True, alpha=0.3)
+cbar4 = plt.colorbar(scatter4, ax=axes[1, 0], ticks=[0,1,2])
+cbar4.set_label('Subtype', fontsize=11, fontweight='bold')
+
+# t-SNE
+scatter5 = axes[1, 1].scatter(tsne_log_result[:, 0], tsne_log_result[:, 1],
+                             c=second_guess_labels, cmap='Set2', alpha=0.7,
+                             s=25, edgecolors='black', linewidth=0.5)
+axes[1, 1].set_xlabel('t-SNE 1', fontsize=12, fontweight='bold')
+axes[1, 1].set_ylabel('t-SNE 2', fontsize=12, fontweight='bold')
+axes[1, 1].set_title('Second Guess (k=3) - t-SNE Space', fontsize=13, fontweight='bold')
+axes[1, 1].grid(True, alpha=0.3)
+cbar5 = plt.colorbar(scatter5, ax=axes[1, 1], ticks=[0,1,2])
+cbar5.set_label('Subtype', fontsize=11, fontweight='bold')
+
+# UMAP
+scatter6 = axes[1, 2].scatter(umap_log_result[:, 0], umap_log_result[:, 1],
+                             c=second_guess_labels, cmap='Set2', alpha=0.7,
+                             s=25, edgecolors='black', linewidth=0.5)
+axes[1, 2].set_xlabel('UMAP 1', fontsize=12, fontweight='bold')
+axes[1, 2].set_ylabel('UMAP 2', fontsize=12, fontweight='bold')
+axes[1, 2].set_title('Second Guess (k=3) - UMAP Space', fontsize=13, fontweight='bold')
+axes[1, 2].grid(True, alpha=0.3)
+cbar6 = plt.colorbar(scatter6, ax=axes[1, 2], ticks=[0,1,2])
+cbar6.set_label('Subtype', fontsize=11, fontweight='bold')
+
+plt.tight_layout()
+plt.show()
+```
+
+## Prediction Summary
+
+**Best Guess (k=2)**: Two breast cancer subtypes
+- **Subtype 0**: 205 patients (19.7%)
+- **Subtype 1**: 838 patients (80.3%)
+
+**Second Guess (k=3)**: Three breast cancer subtypes
+- **Subtype 0**: 440 patients (42.2%)
+- **Subtype 1**: 204 patients (19.6%)
+- **Subtype 2**: 399 patients (38.2%)
+
+
+
+
+## Reproducibility Statement
+
+The final predictions are fully reproducible by running the following code with the same inputs:
+```python
+# Required inputs: gene_expr (1043 × 4999 log-transformed expression matrix)
+pca_10d = PCA(n_components=10, random_state=42)
+pca_10d_result = pca_10d.fit_transform(gene_expr_log)
+
+# k=2 prediction
+kmeans_k2 = KMeans(n_clusters=2, n_init=20, random_state=42)
+best_guess = kmeans_k2.fit_predict(pca_10d_result)
+
+# k=3 prediction
+kmeans_k3 = KMeans(n_clusters=3, n_init=20, random_state=42)
+second_guess = kmeans_k3.fit_predict(pca_10d_result)
+
+# Save
+pd.DataFrame({'best_guess': best_guess, 'second_guess': second_guess}).to_csv(
+    'results/best_subtype_labels.csv', index=False
+)
+```
+
+The predictions have been saved to `results/best_subtype_labels.csv` for evaluation against true breast cancer subtype labels.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Bonus: Joint Hyperparameter and Model Selection via Stability (ACMS 60876 Only, I used help from google gmini for writing the algorithm)
+
+The stability-based framework used above to select k can be naturally extended to simultaneously optimize hyperparameters across the entire unsupervised learning pipeline—from dimension reduction through clustering. This joint optimization approach avoids the pitfall of sequentially fixing hyperparameters that may not generalize across different values of k.
+
+## Proposed Joint Optimization Procedure
+
+### Problem Formulation
+
+**Goal**: Select the optimal configuration θ* = (dim_red_method, dim_red_params, cluster_method, cluster_params, k) that maximizes clustering stability.
+
+**Motivation**: In our main analysis, we fixed dimension reduction (PCA 10D) and clustering method (K-means) before selecting k. However, the "best" hyperparameters may differ for k=2 vs. k=4. For instance, if true subtypes exist in non-linear manifolds, UMAP with appropriate hyperparameters might reveal k=4 clusters more stably than PCA 10D. Joint optimization tests all combinations to find the globally most stable configuration.
+
+### Hyperparameter Search Space
+
+Define candidate hyperparameters for each component:
+
+**Dimension Reduction:**
+- **PCA**: `n_components` ∈ {5, 10, 20, 50}
+- **t-SNE**: `perplexity` ∈ {10, 30, 50}, `learning_rate` ∈ {100, 200, 500}
+- **UMAP**: `n_neighbors` ∈ {5, 15, 30, 50}, `min_dist` ∈ {0.0, 0.1, 0.3, 0.5}
+
+**Clustering Methods:**
+- **K-means**: `n_init` ∈ {10, 20, 50}
+- **Hierarchical**: `linkage` ∈ {'ward', 'average', 'complete'}
+- **GMM**: `covariance_type` ∈ {'full', 'tied', 'diag', 'spherical'}
+
+**Number of Clusters:**
+- k ∈ {2, 3, 4, 5, 6, 7, 8}
+
+**Total configurations**: ~4 PCA + ~9 t-SNE + ~16 UMAP = 29 dimension reduction configs × 3 clustering methods (K-means, Hierarchical, GMM) × ~3 param settings each × 7 k values ≈ **1,800+ configurations**
+
+### Algorithm Pseudocode
+```
+# Inputs
+X: gene expression data (n × p matrix)
+B: number of bootstrap samples (e.g., 100)
+alpha: subsample fraction (e.g., 0.8)
+beta: variance penalty coefficient (e.g., 0.5)
+
+# Define hyperparameter grids
+dim_red_configs = [
+    ('PCA', {'n_components': nc}) for nc in [5, 10, 20, 50]
+] + [
+    ('t-SNE', {'perplexity': p, 'learning_rate': lr}) 
+    for p in [10, 30, 50] for lr in [100, 200, 500]
+] + [
+    ('UMAP', {'n_neighbors': nn, 'min_dist': md}) 
+    for nn in [5, 15, 30, 50] for md in [0.0, 0.1, 0.3, 0.5]
+]
+
+cluster_configs = [
+    ('KMeans', {'n_init': ni}) for ni in [10, 20, 50]
+] + [
+    ('Hierarchical', {'linkage': l}) for l in ['ward', 'average', 'complete']
+] + [
+    ('GMM', {'covariance_type': ct}) for ct in ['full', 'tied', 'diag', 'spherical']
+]
+
+k_range = [2, 3, 4, 5, 6, 7, 8]
+
+# Initialize results storage
+results = {}
+
+# Main optimization loop
+FOR EACH (dim_red_method, dim_red_params) IN dim_red_configs:
+    FOR EACH (cluster_method, cluster_params) IN cluster_configs:
+        FOR EACH k IN k_range:
+            
+            # Create configuration identifier
+            config_id = (dim_red_method, dim_red_params, cluster_method, cluster_params, k)
+            
+            # Storage for stability metrics
+            ari_scores = []
+            jaccard_scores = []
+            
+            # Generate bootstrap samples
+            bootstrap_clusterings = []
+            bootstrap_indices = []
+            
+            FOR b = 1 TO B:
+                # Subsample patients
+                indices_b = random_subsample(n_samples, fraction=alpha)
+                X_b = X[indices_b, :]
+                
+                # Apply dimension reduction with specified hyperparameters
+                IF dim_red_method == 'PCA':
+                    X_reduced_b = PCA(n_components=dim_red_params['n_components']).fit_transform(X_b)
+                ELIF dim_red_method == 't-SNE':
+                    X_reduced_b = TSNE(
+                        perplexity=dim_red_params['perplexity'],
+                        learning_rate=dim_red_params['learning_rate'],
+                        random_state=42
+                    ).fit_transform(X_b)
+                ELIF dim_red_method == 'UMAP':
+                    X_reduced_b = UMAP(
+                        n_neighbors=dim_red_params['n_neighbors'],
+                        min_dist=dim_red_params['min_dist'],
+                        random_state=42
+                    ).fit_transform(X_b)
+                
+                # Apply clustering with specified hyperparameters
+                IF cluster_method == 'KMeans':
+                    labels_b = KMeans(
+                        n_clusters=k,
+                        n_init=cluster_params['n_init'],
+                        random_state=42
+                    ).fit_predict(X_reduced_b)
+                ELIF cluster_method == 'Hierarchical':
+                    labels_b = AgglomerativeClustering(
+                        n_clusters=k,
+                        linkage=cluster_params['linkage']
+                    ).fit_predict(X_reduced_b)
+                ELIF cluster_method == 'GMM':
+                    labels_b = GaussianMixture(
+                        n_components=k,
+                        covariance_type=cluster_params['covariance_type'],
+                        random_state=42
+                    ).fit_predict(X_reduced_b)
+                
+                # Store results
+                bootstrap_clusterings.append(labels_b)
+                bootstrap_indices.append(indices_b)
+            
+            # Compare all pairs of bootstrap samples
+            FOR (i, j) IN all_pairs(range(B)):
+                # Find overlapping patients
+                overlap_indices = intersect(bootstrap_indices[i], bootstrap_indices[j])
+                
+                IF len(overlap_indices) < 100:
+                    CONTINUE  # Need sufficient overlap
+                
+                # Map to positions in each bootstrap sample
+                pos_i = [position_of(idx, bootstrap_indices[i]) for idx in overlap_indices]
+                pos_j = [position_of(idx, bootstrap_indices[j]) for idx in overlap_indices]
+                
+                labels_i_overlap = bootstrap_clusterings[i][pos_i]
+                labels_j_overlap = bootstrap_clusterings[j][pos_j]
+                
+                # Compute stability metrics
+                ari = adjusted_rand_index(labels_i_overlap, labels_j_overlap)
+                jaccard = mean_cluster_jaccard(labels_i_overlap, labels_j_overlap, k)
+                
+                ari_scores.append(ari)
+                jaccard_scores.append(jaccard)
+            
+            # Aggregate stability metrics
+            mean_ari = mean(ari_scores)
+            std_ari = std(ari_scores)
+            mean_jaccard = mean(jaccard_scores)
+            std_jaccard = std(jaccard_scores)
+            
+            # Compute composite stability score (penalize high variance)
+            stability_score = mean_ari - beta * std_ari
+            
+            # Store results
+            results[config_id] = {
+                'mean_ari': mean_ari,
+                'std_ari': std_ari,
+                'mean_jaccard': mean_jaccard,
+                'std_jaccard': std_jaccard,
+                'stability_score': stability_score,
+                'n_comparisons': len(ari_scores)
+            }
+
+# Select optimal configuration
+optimal_config = argmax(results, key=lambda x: results[x]['stability_score'])
+
+RETURN optimal_config, results
+```
+
+### Helper Function: Mean Cluster Jaccard
+```
+FUNCTION mean_cluster_jaccard(labels_i, labels_j, k):
+    """
+    Compute mean Jaccard similarity across cluster pairs
+    """
+    jaccard_scores = []
+    
+    FOR cluster_id IN range(k):
+        # Get members of cluster in first labeling
+        members_i = indices_where(labels_i == cluster_id)
+        
+        # Find best-matching cluster in second labeling
+        best_jaccard = 0
+        FOR cluster_id_j IN range(k):
+            members_j = indices_where(labels_j == cluster_id_j)
+            
+            intersection = len(intersect(members_i, members_j))
+            union = len(union(members_i, members_j))
+            
+            IF union > 0:
+                jaccard = intersection / union
+                best_jaccard = max(best_jaccard, jaccard)
+        
+        jaccard_scores.append(best_jaccard)
+    
+    RETURN mean(jaccard_scores)
+```
+
+## Key Design Decisions
+
+### 1. Independent Bootstrap Subsampling
+
+**Why**: Testing stability across *data perturbations* (subsampling) rather than *algorithm initializations* (different random seeds on full data) provides stronger evidence of robust structure. If clusters emerge consistently when 20% of patients are removed, they likely represent true biological subtypes rather than artifacts of the specific dataset.
+
+### 2. Nested Cross-Configuration Search
+
+**Why**: Each (dimension reduction, clustering method, k) combination is evaluated independently. This avoids bias from fixing hyperparameters early. For example, PCA with 10 components might be optimal for k=2, but UMAP with n_neighbors=30 might be optimal for k=4.
+
+### 3. Composite Stability Score with Variance Penalty
+
+**Formula**: `stability_score = mean_ARI - β × std_ARI`
+
+**Why**: Rewarding high mean stability while penalizing high variance ensures we select configurations that are both highly stable *and* consistent. The coefficient β (e.g., 0.5) controls the trade-off. Higher β prioritizes consistency over absolute stability level.
+
+### 4. Sufficient Overlap Requirement
+
+**Threshold**: Only compare bootstrap pairs with ≥100 overlapping patients
+
+**Why**: Stability metrics become unreliable with small overlap. With 80% subsampling, expected overlap is ~67% (555 patients), ensuring robust comparison.
+
+### 5. Dimensionality Consistency
+
+**Constraint**: When comparing different dimension reduction methods, use *same-dimensional* embeddings where possible (e.g., all 10D) to ensure fair comparison. Alternatively, use full dimensional output but ensure clustering methods receive comparable information.
+
+**Implementation Note**: For t-SNE and UMAP, we typically use 2D embeddings for visualization. To maintain comparability with PCA 10D, either: (a) Compare all methods in 2D space, or (b) Use higher-dimensional UMAP/t-SNE (e.g., 10D) which is supported but less common.
+
+## Computational Efficiency Strategies
+
+Given ~1,800 configurations × 100 bootstraps = 180,000 clustering operations, computational efficiency is critical:
+
+### 1. Coarse-to-Fine Search
+```
+# Stage 1: Coarse grid (every other value)
+coarse_configs = subset_of(all_configs, step=2)
+coarse_results = run_stability_analysis(coarse_configs, B=50)
+
+# Stage 2: Identify promising regions
+top_k_coarse = top_20_percent(coarse_results)
+fine_configs = expand_neighborhood(top_k_coarse)
+
+# Stage 3: Fine-tune with full bootstrap
+fine_results = run_stability_analysis(fine_configs, B=100)
+optimal_config = best_of(fine_results)
+```
+
+**Savings**: ~80% reduction in configurations tested with full bootstrapping
+
+### 2. Parallel Processing
+```
+# Parallelize across configurations (CPU cores)
+results = Parallel(n_jobs=-1)(
+    delayed(evaluate_stability)(config, X, B=100) 
+    for config in all_configs
+)
+```
+
+**Each configuration is independent**, making this embarrassingly parallel.
+
+### 3. Dimension Reduction Caching
+```
+# Cache dimension reduction results to avoid recomputation
+dim_red_cache = {}
+
+FOR EACH bootstrap b:
+    FOR EACH dim_red_config:
+        cache_key = (dim_red_config, bootstrap_indices[b])
+        
+        IF cache_key NOT IN dim_red_cache:
+            X_reduced_b = apply_dimension_reduction(X[bootstrap_indices[b]], dim_red_config)
+            dim_red_cache[cache_key] = X_reduced_b
+        ELSE:
+            X_reduced_b = dim_red_cache[cache_key]
+        
+        # Now test multiple k values and clustering methods on same reduced data
+        FOR EACH k, cluster_method:
+            labels = apply_clustering(X_reduced_b, k, cluster_method)
+```
+
+**Savings**: If testing 7 k values × 3 clustering methods = 21 configs per dimension reduction, caching saves 20/21 = 95% of dimension reduction computations.
+
+### 4. Early Stopping for Unstable Configurations
+```
+# After first 20 bootstrap pairs
+IF mean_ari < 0.5:
+    # Configuration is clearly unstable, skip remaining bootstraps
+    MARK as low_priority
+    CONTINUE to next configuration
+```
+
+**Savings**: ~30% of configurations eliminated early based on low initial stability
+
+### 5. Warm-Start Initialization
+
+For iterative methods (K-means, GMM), use previous bootstrap's solution as initialization:
+```
+FOR b = 2 TO B:
+    # Use previous bootstrap's centroids as initial guess
+    IF cluster_method == 'KMeans':
+        init_centroids = project_to_new_space(previous_centroids, current_data)
+        kmeans = KMeans(n_clusters=k, init=init_centroids, n_init=1)
+```
+
+**Savings**: Faster convergence, especially for large k
+
+## Expected Outcomes and Interpretation
+
+### Anticipated Optimal Configurations
+
+Based on our exploratory analysis, I hypothesize:
+
+**For k=2**:
+- **Dimension reduction**: PCA with 10-20 components (balances variance vs. noise)
+- **Clustering**: K-means or Hierarchical Ward (both showed high agreement)
+- **Expected stability**: ARI > 0.95, Jaccard > 0.95
+
+**For k=3-4**:
+- **Dimension reduction**: UMAP with n_neighbors=15-30, min_dist=0.1 (enhances local cluster separation)
+- **Clustering**: GMM with full covariance (captures elliptical luminal subtype heterogeneity)
+- **Expected stability**: ARI > 0.80, Jaccard > 0.85
+
+**For k≥5**:
+- **Prediction**: All configurations show degraded stability (ARI < 0.75), confirming overfitting
+
+### Validation of Results
+
+The selected optimal configuration should satisfy:
+
+1. **High absolute stability**: Mean ARI > 0.85, Mean Jaccard > 0.85
+2. **Low variance**: Std(ARI) < 0.05, indicating consistent recovery across subsamples
+3. **Clear stability peak**: Sharp drop in stability when k is increased beyond optimal value
+4. **Robustness to hyperparameter perturbation**: Similar k selected for nearby hyperparameter values (e.g., PCA 10 vs. PCA 20 should agree on k)
+
+### Interpretation Guidelines
+
+**If multiple (hyperparameter, k) pairs achieve similar stability**:
+- Report uncertainty: "k ∈ {2,3} with ARI difference < 0.02"
+- Prefer simpler models (Occam's razor): Choose smaller k if stability is equivalent
+- Consider biological interpretability: Three subtypes (HR+, HER2+, TNBC) may be preferred over two for clinical utility
+
+**If optimal hyperparameters differ dramatically across k**:
+- Suggests different data structures at different granularities
+- Example: k=2 optimal with PCA (linear separation), k=4 optimal with UMAP (non-linear manifold)
+- Implication: Breast cancer subtypes may form a hierarchical structure with primary linear division and non-linear sub-divisions
+
+## Advantages Over Sequential Hyperparameter Selection
+
+### Sequential Approach (Used in Main Analysis)
+
+1. Fix dimension reduction method and hyperparameters (PCA 10D)
+2. Fix clustering method and hyperparameters (K-means, n_init=20)
+3. Select k via stability
+
+**Limitations**:
+- Assumes optimal hyperparameters for k=2 are also optimal for k=4
+- No exploration of alternative dimension reduction (t-SNE, UMAP) for stability
+- May miss optimal configurations where different hyperparameters excel at different k values
+
+### Joint Approach (Proposed)
+
+**Advantages**:
+1. **Global optimum**: Searches entire configuration space rather than local neighborhood
+2. **Hyperparameter-k interaction**: Discovers if different hyperparameters are optimal for different k
+3. **Method robustness**: If multiple methods/hyperparameters agree on same k, stronger evidence
+4. **Uncertainty quantification**: Reveals if stability surface is flat (many similar configs) or peaked (one clear winner)
+
+**Disadvantages**:
+1. **Computational cost**: 100× more expensive (mitigated by strategies above)
+2. **Multiple testing problem**: With 1,800 tests, probability of spuriously high stability increases (requires Bonferroni or FDR correction)
+3. **Overfitting risk**: May select configuration that is stable *by chance* rather than biological signal
+4. **Interpretability**: Harder to explain "why" specific hyperparameters were chosen (data-driven black box)
+
+## Multiple Comparison Correction
+
+With 1,800 configurations tested, probability of false discovery is high. Apply correction:
+
+### Bonferroni Correction (Conservative)
+```
+alpha = 0.05
+n_configs = 1800
+adjusted_threshold = alpha / n_configs = 0.000028
+
+# Require stability significantly above chance
+FOR config IN all_configs:
+    IF results[config]['mean_ari'] > (1 - adjusted_threshold):
+        MARK as significant
+```
+
+**Problem**: Too conservative, may reject true clusters
+
+### False Discovery Rate (FDR) Control (Preferred)
+```
+# Benjamini-Hochberg procedure
+sorted_configs = sort(all_configs, by=lambda x: results[x]['stability_score'], descending=True)
+
+FOR rank, config IN enumerate(sorted_configs):
+    threshold = (rank / n_configs) * alpha
+    
+    IF results[config]['stability_score'] > threshold:
+        MARK as significant
+    ELSE:
+        BREAK
+```
+
+**Benefit**: Controls expected proportion of false discoveries while maintaining power
+
+## Practical Implementation Recommendations
+
+### Recommended Workflow for Real Analysis
+
+1. **Start with sequential approach** (fix hyperparameters, select k) as baseline—fast and interpretable
+
+2. **Validate with targeted joint search**: Test top 3 dimension reduction methods × top 2 clustering methods × k range = ~42 configurations with full bootstrapping
+
+3. **Compare results**: If sequential and joint approaches agree on k, high confidence. If they disagree, investigate why.
+
+4. **Sensitivity analysis**: Manually perturb top-ranked configuration's hyperparameters to ensure stability (e.g., PCA 10 vs. 12 components)
+
+5. **Biological validation**: Even if k=5 has highest statistical stability, if k=3 has only marginally lower stability but maps clearly to clinical subtypes (HR+, HER2+, TNBC), prefer k=3
+
+### When to Use Joint Optimization
+
+**Recommended**:
+- High-stakes decisions (clinical trial stratification, treatment selection)
+- When hyperparameter sensitivity is unknown
+- When multiple methods give conflicting k values in exploratory analysis
+
+**Not Recommended**:
+- Exploratory analysis with tight computational budget
+- When sequential approach gives clear, stable k (e.g., ARI > 0.95 with large stability gap)
+- When biological ground truth exists (e.g., PAM50 subtypes for breast cancer)
+
+---
+
+## Conclusion
+
+The proposed joint hyperparameter and model selection framework extends stability-based model selection to optimize the entire unsupervised learning pipeline simultaneously. While computationally expensive, it provides the most rigorous, data-driven approach to identifying the true number of clusters when hyperparameter choices may substantially impact results. For the breast cancer subtyping problem, I hypothesize this approach would confirm k=2 as most stable (since it was robust across all methods in our exploratory analysis), while potentially identifying UMAP-based configurations that make k=3-4 more stable than our PCA-based sequential approach revealed. The key insight is that **stability should be the criterion not just for selecting k, but for validating the entire methodological pipeline** from raw data to final cluster assignments.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Joint Hyperparameter and Model Selection (ACMS 60876 Bonus - Implementation)
+
+In addition to the theoretical framework described above, we now implement a practical version of the joint hyperparameter optimization to empirically test whether different dimension reduction and clustering configurations change the optimal k.
+
+## Focused Search Space
+
+Due to computational constraints, we test a focused subset of promising configurations based on our exploratory analysis:
+
+**Dimension Reduction:**
+- PCA: 5, 10, 20 components
+- t-SNE: perplexity=30, learning_rate=200
+- UMAP: n_neighbors ∈ {15, 30}, min_dist=0.1
+
+**Clustering Methods:**
+- K-means (n_init=20)
+- Hierarchical (linkage='ward')
+- GMM (covariance_type='full')
+
+**k values:** {2, 3, 4, 5}
+
+**Total configurations:** 6 dimension reduction × 3 clustering × 4 k = 72 configurations
+```{python}
+#| label: joint-optimization-setup
+import warnings
+warnings.filterwarnings('ignore')
+from itertools import product
+import time
+
+# Define focused hyperparameter search space
+dim_red_configs = [
+    ('PCA', {'n_components': 5}),
+    ('PCA', {'n_components': 10}),
+    ('PCA', {'n_components': 20}),
+    ('t-SNE', {'perplexity': 30, 'learning_rate': 200}),
+    ('UMAP', {'n_neighbors': 15, 'min_dist': 0.1}),
+    ('UMAP', {'n_neighbors': 30, 'min_dist': 0.1}),
+]
+
+cluster_configs = [
+    ('KMeans', {'n_init': 20}),
+    ('Hierarchical', {'linkage': 'ward'}),
+    ('GMM', {'covariance_type': 'full'}),
+]
+
+k_range = [2, 3, 4, 5]
+
+# Generate all configuration combinations
+all_configs = list(product(dim_red_configs, cluster_configs, k_range))
+print(f"=== JOINT HYPERPARAMETER OPTIMIZATION ===")
+print(f"Total configurations to test: {len(all_configs)}")
+print(f"Estimated runtime: ~{len(all_configs) * 0.5:.0f} minutes (with B=30 subsamples)")
+print()
+```
+```{python}
+#| label: joint-optimization-function
+def evaluate_config_stability(X, dim_red_config, cluster_config, k, 
+                               n_subsamples=30, subsample_frac=0.8):
+    """
+    Evaluate stability of a single configuration using subsampling
+    
+    Parameters:
+    -----------
+    X : array-like, shape (n_samples, n_features)
+        Input data (log-transformed gene expression)
+    dim_red_config : tuple
+        (method_name, parameters_dict)
+    cluster_config : tuple
+        (method_name, parameters_dict)
+    k : int
+        Number of clusters
+    n_subsamples : int
+        Number of bootstrap subsamples
+    subsample_frac : float
+        Fraction of data to subsample
+    
+    Returns:
+    --------
+    dict with mean_ari, std_ari, mean_jaccard, std_jaccard
+    """
+    dim_red_method, dim_red_params = dim_red_config
+    cluster_method, cluster_params = cluster_config
+    
+    n_samples = X.shape[0]
+    subsample_size = int(n_samples * subsample_frac)
+    
+    # Store subsamples
+    subsamples_indices = []
+    subsamples_labels = []
+    
+    # Generate subsamples and cluster
+    for i in range(n_subsamples):
+        # Random subsample
+        indices = np.random.choice(n_samples, size=subsample_size, replace=False)
+        X_sub = X[indices]
+        
+        # Apply dimension reduction
+        if dim_red_method == 'PCA':
+            reducer = PCA(n_components=dim_red_params['n_components'], random_state=42)
+            X_reduced = reducer.fit_transform(X_sub)
+        elif dim_red_method == 't-SNE':
+            reducer = TSNE(
+                n_components=2, 
+                perplexity=dim_red_params['perplexity'],
+                learning_rate=dim_red_params['learning_rate'],
+                random_state=42+i  # Different seed per subsample for t-SNE
+            )
+            X_reduced = reducer.fit_transform(X_sub)
+        elif dim_red_method == 'UMAP':
+            reducer = UMAP(
+                n_components=2,
+                n_neighbors=dim_red_params['n_neighbors'],
+                min_dist=dim_red_params['min_dist'],
+                random_state=42
+            )
+            X_reduced = reducer.fit_transform(X_sub)
+        
+        # Apply clustering
+        if cluster_method == 'KMeans':
+            clusterer = KMeans(
+                n_clusters=k, 
+                n_init=cluster_params['n_init'], 
+                random_state=42
+            )
+            labels = clusterer.fit_predict(X_reduced)
+        elif cluster_method == 'Hierarchical':
+            clusterer = AgglomerativeClustering(
+                n_clusters=k,
+                linkage=cluster_params['linkage']
+            )
+            labels = clusterer.fit_predict(X_reduced)
+        elif cluster_method == 'GMM':
+            clusterer = GaussianMixture(
+                n_components=k,
+                covariance_type=cluster_params['covariance_type'],
+                random_state=42
+            )
+            labels = clusterer.fit_predict(X_reduced)
+        
+        subsamples_indices.append(indices)
+        subsamples_labels.append(labels)
+    
+    # Compare all pairs
+    ari_scores = []
+    jaccard_scores_all = []
+    
+    for i, j in itertools.combinations(range(n_subsamples), 2):
+        # Find overlap
+        overlap_idx = np.intersect1d(subsamples_indices[i], subsamples_indices[j])
+        
+        if len(overlap_idx) < 100:
+            continue
+        
+        # Map to positions
+        pos_i = np.array([np.where(subsamples_indices[i] == idx)[0][0] for idx in overlap_idx])
+        pos_j = np.array([np.where(subsamples_indices[j] == idx)[0][0] for idx in overlap_idx])
+        
+        labels_i = subsamples_labels[i][pos_i]
+        labels_j = subsamples_labels[j][pos_j]
+        
+        # ARI
+        ari = adjusted_rand_score(labels_i, labels_j)
+        ari_scores.append(ari)
+        
+        # Jaccard
+        jaccard_scores = []
+        for c in range(k):
+            members_i = np.where(labels_i == c)[0]
+            best_jaccard = 0
+            for c2 in range(k):
+                members_j = np.where(labels_j == c2)[0]
+                intersection = len(np.intersect1d(members_i, members_j))
+                union = len(np.union1d(members_i, members_j))
+                if union > 0:
+                    jaccard = intersection / union
+                    best_jaccard = max(best_jaccard, jaccard)
+            jaccard_scores.append(best_jaccard)
+        
+        jaccard_scores_all.append(np.mean(jaccard_scores))
+    
+    return {
+        'mean_ari': np.mean(ari_scores) if ari_scores else 0,
+        'std_ari': np.std(ari_scores) if ari_scores else 1,
+        'mean_jaccard': np.mean(jaccard_scores_all) if jaccard_scores_all else 0,
+        'std_jaccard': np.std(jaccard_scores_all) if jaccard_scores_all else 1,
+        'n_comparisons': len(ari_scores)
+    }
+```
+```{python}
+#| label: run-joint-optimization
+# Run joint optimization
+print("Starting joint hyperparameter optimization...")
+print("This may take 30-45 minutes. Progress will be shown below.\n")
+start_time = time.time()
+
+joint_results = []
+beta = 0.5  # Variance penalty coefficient
+
+for idx, (dim_red_cfg, cluster_cfg, k) in enumerate(all_configs):
+    dim_red_method, dim_red_params = dim_red_cfg
+    cluster_method, cluster_params = cluster_cfg
+    
+    # Create config name
+    if dim_red_method == 'PCA':
+        dr_name = f"PCA-{dim_red_params['n_components']}D"
+    elif dim_red_method == 't-SNE':
+        dr_name = f"tSNE-p{dim_red_params['perplexity']}"
+    elif dim_red_method == 'UMAP':
+        dr_name = f"UMAP-n{dim_red_params['n_neighbors']}"
+    
+    config_name = f"{dr_name}+{cluster_method}+k{k}"
+    
+    print(f"[{idx+1}/{len(all_configs)}] {config_name:40s}", end=" ")
+    
+    # Evaluate stability
+    stability = evaluate_config_stability(
+        gene_expr_log.values, dim_red_cfg, cluster_cfg, k,
+        n_subsamples=30, subsample_frac=0.8
+    )
+    
+    # Compute composite score
+    stability_score = stability['mean_ari'] - beta * stability['std_ari']
+    
+    joint_results.append({
+        'dim_red_method': dim_red_method,
+        'dim_red_params': str(dim_red_params),
+        'cluster_method': cluster_method,
+        'cluster_params': str(cluster_params),
+        'k': k,
+        'config_name': config_name,
+        'mean_ari': stability['mean_ari'],
+        'std_ari': stability['std_ari'],
+        'mean_jaccard': stability['mean_jaccard'],
+        'std_jaccard': stability['std_jaccard'],
+        'stability_score': stability_score,
+        'n_comparisons': stability['n_comparisons']
+    })
+    
+    print(f"ARI={stability['mean_ari']:.3f}±{stability['std_ari']:.3f}, Score={stability_score:.3f}")
+
+elapsed = time.time() - start_time
+print(f"\n✓ Optimization completed in {elapsed/60:.1f} minutes")
+
+# Convert to DataFrame
+joint_df = pd.DataFrame(joint_results)
+
+# Find optimal configuration
+optimal_idx = joint_df['stability_score'].idxmax()
+optimal_config = joint_df.loc[optimal_idx]
+
+print("\n" + "="*80)
+print("OPTIMAL CONFIGURATION FROM JOINT SEARCH")
+print("="*80)
+print(f"Configuration: {optimal_config['config_name']}")
+print(f"Dimension Reduction: {optimal_config['dim_red_method']} {optimal_config['dim_red_params']}")
+print(f"Clustering Method: {optimal_config['cluster_method']} {optimal_config['cluster_params']}")
+print(f"Number of Clusters: k = {optimal_config['k']}")
+print(f"Mean ARI: {optimal_config['mean_ari']:.4f} ± {optimal_config['std_ari']:.4f}")
+print(f"Mean Jaccard: {optimal_config['mean_jaccard']:.4f} ± {optimal_config['std_jaccard']:.4f}")
+print(f"Stability Score: {optimal_config['stability_score']:.4f}")
+print("="*80)
+
+# Show top 10 configurations
+print("\nTOP 10 CONFIGURATIONS BY STABILITY SCORE:")
+print(joint_df.nlargest(10, 'stability_score')[
+    ['config_name', 'k', 'mean_ari', 'std_ari', 'stability_score']
+].to_string(index=False))
+```
+```{python}
+#| label: joint-results-visualization
+#| fig-cap: "Joint hyperparameter optimization results. Top left: Top 20 configurations by stability score. Top right: Stability trends across k for each method combination. Bottom left: Trade-off between mean stability and consistency (lower variance is better). Bottom right: Heatmap showing mean ARI by dimension reduction method and k."
+
+fig, axes = plt.subplots(2, 2, figsize=(18, 14))
+
+# Top left: Bar plot of top 20 configurations
+top20 = joint_df.nlargest(20, 'stability_score')
+colors = plt.cm.viridis(top20['k'].values / top20['k'].max())
+
+axes[0, 0].barh(range(len(top20)), top20['stability_score'], color=colors)
+axes[0, 0].set_yticks(range(len(top20)))
+axes[0, 0].set_yticklabels(top20['config_name'], fontsize=8)
+axes[0, 0].set_xlabel('Stability Score (ARI - 0.5×SD)', fontsize=12, fontweight='bold')
+axes[0, 0].set_title('Top 20 Configurations by Stability Score', fontsize=13, fontweight='bold')
+axes[0, 0].grid(True, alpha=0.3, axis='x')
+axes[0, 0].invert_yaxis()
+
+# Top right: Line plot of mean ARI by k for each method combination
+for (dr_method, cluster_method), group in joint_df.groupby(['dim_red_method', 'cluster_method']):
+    if len(group) >= 3:  # Only plot if we have multiple k values
+        group_sorted = group.sort_values('k')
+        label = f"{dr_method}+{cluster_method}"
+        axes[0, 1].plot(group_sorted['k'], group_sorted['mean_ari'], 
+                       'o-', label=label, linewidth=2, markersize=6, alpha=0.7)
+
+axes[0, 1].axhline(0.9, color='red', linestyle='--', linewidth=1.5, alpha=0.5, label='High stability (0.9)')
+axes[0, 1].set_xlabel('Number of Clusters (k)', fontsize=12, fontweight='bold')
+axes[0, 1].set_ylabel('Mean ARI', fontsize=12, fontweight='bold')
+axes[0, 1].set_title('Stability (Mean ARI) vs k by Method', fontsize=13, fontweight='bold')
+axes[0, 1].legend(fontsize=8, loc='best', ncol=2)
+axes[0, 1].grid(True, alpha=0.3)
+axes[0, 1].set_xticks([2, 3, 4, 5])
+axes[0, 1].set_ylim(0.6, 1.05)
+
+# Bottom left: Scatter plot of mean vs std (Pareto frontier)
+scatter = axes[1, 0].scatter(joint_df['std_ari'], joint_df['mean_ari'],
+                            c=joint_df['k'], cmap='viridis', s=100, alpha=0.6,
+                            edgecolors='black', linewidth=0.5)
+axes[1, 0].set_xlabel('Std(ARI) - Lower is Better', fontsize=12, fontweight='bold')
+axes[1, 0].set_ylabel('Mean(ARI) - Higher is Better', fontsize=12, fontweight='bold')
+axes[1, 0].set_title('Stability vs Consistency Trade-off', fontsize=13, fontweight='bold')
+axes[1, 0].grid(True, alpha=0.3)
+cbar = plt.colorbar(scatter, ax=axes[1, 0], label='k')
+
+# Highlight optimal
+axes[1, 0].scatter(optimal_config['std_ari'], optimal_config['mean_ari'],
+                  s=400, c='red', marker='*', edgecolors='black', linewidth=2,
+                  label='Optimal Config', zorder=10)
+axes[1, 0].legend(fontsize=10)
+
+# Bottom right: Heatmap of mean ARI by dim_red_method and k
+pivot = joint_df.pivot_table(values='mean_ari', 
+                             index='dim_red_method', 
+                             columns='k', 
+                             aggfunc='mean')
+im = axes[1, 1].imshow(pivot.values, cmap='RdYlGn', aspect='auto', vmin=0.7, vmax=1.0)
+axes[1, 1].set_xticks(range(len(pivot.columns)))
+axes[1, 1].set_xticklabels(pivot.columns)
+axes[1, 1].set_yticks(range(len(pivot.index)))
+axes[1, 1].set_yticklabels(pivot.index)
+axes[1, 1].set_xlabel('Number of Clusters (k)', fontsize=12, fontweight='bold')
+axes[1, 1].set_ylabel('Dimension Reduction Method', fontsize=12, fontweight='bold')
+axes[1, 1].set_title('Mean ARI Heatmap (averaged over clustering methods)', 
+                     fontsize=13, fontweight='bold')
+
+# Add values to heatmap
+for i in range(len(pivot.index)):
+    for j in range(len(pivot.columns)):
+        if not np.isnan(pivot.values[i, j]):
+            text = axes[1, 1].text(j, i, f'{pivot.values[i, j]:.3f}',
+                                  ha="center", va="center", color="black", fontsize=10, fontweight='bold')
+
+plt.colorbar(im, ax=axes[1, 1], label='Mean ARI')
+
+plt.tight_layout()
+plt.show()
+```
+```{python}
+#| label: compare-baseline-vs-joint
+#| fig-cap: "Comparison of baseline (sequential) approach vs joint optimization. Shows stability scores for all k values, with baseline highlighted. Joint optimization confirms k=2 is optimal but reveals configuration-dependent differences for k≥3."
+
+# Compare with our baseline (K-means on PCA 10D from main analysis)
+baseline_configs = joint_df[
+    (joint_df['dim_red_method'] == 'PCA') & 
+    (joint_df['dim_red_params'].str.contains('10')) &
+    (joint_df['cluster_method'] == 'KMeans')
+].copy()
+
+print("\n" + "="*80)
+print("COMPARISON: JOINT OPTIMIZATION vs BASELINE (SEQUENTIAL) APPROACH")
+print("="*80)
+
+print("\nBASELINE (K-means on PCA 10D - from sequential approach):")
+if len(baseline_configs) > 0:
+    for _, row in baseline_configs.iterrows():
+        print(f"  k={row['k']}: ARI={row['mean_ari']:.4f}±{row['std_ari']:.4f}, "
+              f"Jaccard={row['mean_jaccard']:.4f}, Score={row['stability_score']:.4f}")
+    
+    best_baseline = baseline_configs.loc[baseline_configs['stability_score'].idxmax()]
+    print(f"\nBest baseline: k={best_baseline['k']} with score={best_baseline['stability_score']:.4f}")
+else:
+    print("  [PCA 10D not in tested configurations]")
+    best_baseline = None
+
+print(f"\nOPTIMAL FROM JOINT SEARCH:")
+print(f"  {optimal_config['config_name']}: k={optimal_config['k']}")
+print(f"  ARI={optimal_config['mean_ari']:.4f}±{optimal_config['std_ari']:.4f}")
+print(f"  Jaccard={optimal_config['mean_jaccard']:.4f}")
+print(f"  Stability Score={optimal_config['stability_score']:.4f}")
+
+# Check if joint optimization found better config
+if best_baseline is not None:
+    improvement = optimal_config['stability_score'] - best_baseline['stability_score']
+    print(f"\nImprovement over baseline: {improvement:+.4f} stability score units")
+    
+    if improvement > 0.01:
+        print("✓ Joint optimization found meaningfully better configuration")
+    elif abs(improvement) < 0.01:
+        print("✓ Joint optimization confirms baseline was already near-optimal")
+    else:
+        print("  Baseline was optimal (joint search did not improve)")
+
+# Visualization: Compare baseline vs all configs for each k
+fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+
+for k_val in sorted(joint_df['k'].unique()):
+    k_data = joint_df[joint_df['k'] == k_val]['stability_score']
+    positions = [k_val + np.random.normal(0, 0.05) for _ in range(len(k_data))]
+    ax.scatter(positions, k_data, alpha=0.5, s=50, label=f'k={k_val}' if k_val == 2 else '')
+
+# Highlight baseline
+if len(baseline_configs) > 0:
+    for _, row in baseline_configs.iterrows():
+        ax.scatter(row['k'], row['stability_score'], 
+                  s=200, marker='D', c='red', edgecolors='black', linewidth=2,
+                  label='Baseline (PCA10D+KMeans)' if row['k'] == baseline_configs.iloc[0]['k'] else '',
+                  zorder=10)
+
+# Highlight optimal
+ax.scatter(optimal_config['k'], optimal_config['stability_score'],
+          s=400, marker='*', c='gold', edgecolors='black', linewidth=2,
+          label='Optimal (Joint Search)', zorder=11)
+
+ax.set_xlabel('Number of Clusters (k)', fontsize=13, fontweight='bold')
+ax.set_ylabel('Stability Score (ARI - 0.5×SD)', fontsize=13, fontweight='bold')
+ax.set_title('Baseline vs Joint Optimization: Stability Across Configurations', 
+            fontsize=14, fontweight='bold')
+ax.set_xticks([2, 3, 4, 5])
+ax.grid(True, alpha=0.3)
+ax.legend(fontsize=11)
+
+plt.tight_layout()
+plt.show()
+```
+```{python}
+#| label: consensus-analysis
+# Analyze consensus across methods for each k
+print("\n" + "="*80)
+print("CONSENSUS ACROSS METHODS FOR EACH k")
+print("="*80)
+
+for k_val in sorted(joint_df['k'].unique()):
+    k_subset = joint_df[joint_df['k'] == k_val]
+    
+    print(f"\nk = {k_val}:")
+    print(f"  Configurations tested: {len(k_subset)}")
+    print(f"  Mean ARI across all configs: {k_subset['mean_ari'].mean():.4f} ± {k_subset['mean_ari'].std():.4f}")
+    print(f"  Range of ARI: [{k_subset['mean_ari'].min():.4f}, {k_subset['mean_ari'].max():.4f}]")
+    print(f"  ARI range width: {k_subset['mean_ari'].max() - k_subset['mean_ari'].min():.4f}")
+    
+    best_config = k_subset.loc[k_subset['stability_score'].idxmax()]
+    worst_config = k_subset.loc[k_subset['stability_score'].idxmin()]
+    
+    print(f"  Best configuration: {best_config['config_name']}")
+    print(f"    ARI = {best_config['mean_ari']:.4f}, Score = {best_config['stability_score']:.4f}")
+    print(f"  Worst configuration: {worst_config['config_name']}")
+    print(f"    ARI = {worst_config['mean_ari']:.4f}, Score = {worst_config['stability_score']:.4f}")
+    
+    # Check if all methods agree
+    agreement = k_subset['mean_ari'].std() < 0.05
+    if agreement:
+        print(f"  ✓ Strong consensus: All methods agree (std < 0.05)")
+    else:
+        print(f"  ⚠ Moderate disagreement: Configuration choice matters")
+
+# Final verdict
+print("\n" + "="*80)
+print("FINAL VERDICT FROM JOINT OPTIMIZATION")
+print("="*80)
+
+top_3_k_values = joint_df.groupby('k')['stability_score'].max().nlargest(3)
+print("\nTop 3 k values by best stability score:")
+for k_val, score in top_3_k_values.items():
+    configs_for_k = joint_df[joint_df['k'] == k_val]
+    best = configs_for_k.loc[configs_for_k['stability_score'].idxmax()]
+    print(f"  k={k_val}: Score={score:.4f} (config: {best['config_name']})")
+
+print(f"\nRecommended k: {optimal_config['k']}")
+print(f"Recommended configuration: {optimal_config['config_name']}")
+
+# Does this agree with our sequential approach?
+if best_baseline is not None and optimal_config['k'] == best_baseline['k']:
+    print("\n✓ AGREEMENT: Joint optimization confirms sequential approach (both select k={})".format(optimal_config['k']))
+elif best_baseline is not None:
+    print(f"\n⚠ DISAGREEMENT: Sequential selected k={best_baseline['k']}, joint selects k={optimal_config['k']}")
+    print(f"  Stability difference: {optimal_config['stability_score'] - best_baseline['stability_score']:.4f}")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Finding 1: Strong Confirmation of k=2
+
+**Result**: All top 10 configurations by stability score select k=2, with scores ranging from 0.982-0.994.
+
+**Interpretation**: The unanimous agreement across diverse methodological choices provides overwhelming evidence that k=2 represents the most robust structure in this dataset. No combination of dimension reduction and clustering methods found k≥3 to be more stable than k=2.
+
+
+The 3.5× increase in standard deviation from k=2 to k=3 demonstrates that while k=2 is robust across all methods, k≥3 is highly configuration-dependent—a hallmark of overfitting or ambiguous structure.
+
+### Finding 2: PCA Outperforms Non-Linear Methods
+
+**Result**: PCA-based configurations dominate the top rankings, with PCA-5D+K-means+k2 achieving the highest stability score (0.994).
+
+
+
+
+### Finding 3: K-means Most Robust for k=2, But Not k≥3
+
+**Result**: For k=2, K-means, Hierarchical, and GMM achieve similar stability (ARI≈0.99). For k≥3, K-means substantially outperforms Hierarchical clustering.
+
+**Key Comparisons**:
+- k=2: K-means ARI=0.997, Hierarchical ARI=0.988 (similar)
+- k=3: K-means ARI=0.958, Hierarchical ARI=0.540 (K-means 77% better)
+- k=4: K-means ARI=0.927, Hierarchical ARI=0.483 (K-means 92% better)
+
+
+
+
+---
+
+## Updated Final Predictions (Based on Joint Optimization Results)
+
+Given that joint optimization identified **PCA 5D + K-means** as the optimal configuration, we regenerate our final predictions using this method to ensure consistency with our empirical findings.
+```{python}
+#| label: final-predictions-joint-optimal
+# Generate predictions using OPTIMAL configuration from joint search
+# PCA 5D + K-means
+
+# Apply PCA 5D
+pca_5d = PCA(n_components=5, random_state=42)
+pca_5d_result = pca_5d.fit_transform(gene_expr_log)
+
+print("=== FINAL PREDICTIONS (JOINT-OPTIMAL CONFIGURATION) ===")
+print(f"Using: PCA 5D + K-means (optimal from joint optimization)")
+print(f"Variance explained by 5 PCs: {sum(pca_5d.explained_variance_ratio_)*100:.2f}%\n")
+
+# Best guess: k=2 (unanimous choice across all optimization approaches)
+kmeans_k2_optimal = KMeans(n_clusters=2, n_init=20, random_state=42)
+best_guess_labels_optimal = kmeans_k2_optimal.fit_predict(pca_5d_result)
+
+# Second guess: k=3 (runner-up in sequential approach)
+kmeans_k3_optimal = KMeans(n_clusters=3, n_init=20, random_state=42)
+second_guess_labels_optimal = kmeans_k3_optimal.fit_predict(pca_5d_result)
+
+# Create results dataframe
+predicted_subtypes_optimal = pd.DataFrame({
+    'best_guess': best_guess_labels_optimal,
+    'second_guess': second_guess_labels_optimal
+})
+
+# Save to CSV (overwrite previous version)
+predicted_subtypes_optimal.to_csv(oj(RESULTS_PATH, "best_subtype_labels.csv"), index=False)
+
+print("Distribution of final predictions:")
+print(f"\nBest guess (k=2):")
+print(pd.Series(best_guess_labels_optimal).value_counts().sort_index())
+print(f"\nSecond guess (k=3):")
+print(pd.Series(second_guess_labels_optimal).value_counts().sort_index())
+
+# Compare with previous predictions (PCA 10D)
+agreement_k2 = adjusted_rand_score(best_guess_labels, best_guess_labels_optimal)
+agreement_k3 = adjusted_rand_score(second_guess_labels, second_guess_labels_optimal)
+
+print(f"\n=== COMPARISON WITH PREVIOUS PREDICTIONS ===")
+print(f"Agreement for k=2 (PCA 10D vs PCA 5D): ARI = {agreement_k2:.4f}")
+print(f"Agreement for k=3 (PCA 10D vs PCA 5D): ARI = {agreement_k3:.4f}")
+
+if agreement_k2 > 0.95:
+    print("✓ k=2 predictions are highly consistent across PCA dimensions")
+if agreement_k3 > 0.80:
+    print("✓ k=3 predictions are reasonably consistent across PCA dimensions")
+
+print(f"\n✓ Final predictions saved to: {oj(RESULTS_PATH, 'best_subtype_labels.csv')}")
+```
+```{python}
+#| label: final-predictions-visualization-updated
+#| fig-cap: "Updated final subtype predictions using joint-optimal configuration (PCA 5D + K-means). Top row: k=2 (best guess) visualized across PCA, t-SNE, and UMAP spaces. Bottom row: k=3 (second guess). These predictions achieve the highest stability score (0.994) among all 72 tested configurations."
+
+fig, axes = plt.subplots(2, 3, figsize=(20, 12))
+
+# k=2 visualizations
+# PCA
+scatter1 = axes[0, 0].scatter(pca_log_result[:, 0], pca_log_result[:, 1],
+                             c=best_guess_labels_optimal, cmap='Set1', alpha=0.7,
+                             s=25, edgecolors='black', linewidth=0.5)
+axes[0, 0].set_xlabel('PC1', fontsize=12, fontweight='bold')
+axes[0, 0].set_ylabel('PC2', fontsize=12, fontweight='bold')
+axes[0, 0].set_title('FINAL: k=2 (PCA 5D+K-means) - PCA Space', fontsize=13, fontweight='bold')
+axes[0, 0].grid(True, alpha=0.3)
+cbar1 = plt.colorbar(scatter1, ax=axes[0, 0], ticks=[0,1])
+cbar1.set_label('Subtype', fontsize=11, fontweight='bold')
+
+# t-SNE
+scatter2 = axes[0, 1].scatter(tsne_log_result[:, 0], tsne_log_result[:, 1],
+                             c=best_guess_labels_optimal, cmap='Set1', alpha=0.7,
+                             s=25, edgecolors='black', linewidth=0.5)
+axes[0, 1].set_xlabel('t-SNE 1', fontsize=12, fontweight='bold')
+axes[0, 1].set_ylabel('t-SNE 2', fontsize=12, fontweight='bold')
+axes[0, 1].set_title('FINAL: k=2 (PCA 5D+K-means) - t-SNE Space', fontsize=13, fontweight='bold')
+axes[0, 1].grid(True, alpha=0.3)
+cbar2 = plt.colorbar(scatter2, ax=axes[0, 1], ticks=[0,1])
+cbar2.set_label('Subtype', fontsize=11, fontweight='bold')
+
+# UMAP
+scatter3 = axes[0, 2].scatter(umap_log_result[:, 0], umap_log_result[:, 1],
+                             c=best_guess_labels_optimal, cmap='Set1', alpha=0.7,
+                             s=25, edgecolors='black', linewidth=0.5)
+axes[0, 2].set_xlabel('UMAP 1', fontsize=12, fontweight='bold')
+axes[0, 2].set_ylabel('UMAP 2', fontsize=12, fontweight='bold')
+axes[0, 2].set_title('FINAL: k=2 (PCA 5D+K-means) - UMAP Space', fontsize=13, fontweight='bold')
+axes[0, 2].grid(True, alpha=0.3)
+cbar3 = plt.colorbar(scatter3, ax=axes[0, 2], ticks=[0,1])
+cbar3.set_label('Subtype', fontsize=11, fontweight='bold')
+
+# k=3 visualizations
+# PCA
+scatter4 = axes[1, 0].scatter(pca_log_result[:, 0], pca_log_result[:, 1],
+                             c=second_guess_labels_optimal, cmap='Set2', alpha=0.7,
+                             s=25, edgecolors='black', linewidth=0.5)
+axes[1, 0].set_xlabel('PC1', fontsize=12, fontweight='bold')
+axes[1, 0].set_ylabel('PC2', fontsize=12, fontweight='bold')
+axes[1, 0].set_title('FINAL: k=3 (PCA 5D+K-means) - PCA Space', fontsize=13, fontweight='bold')
+axes[1, 0].grid(True, alpha=0.3)
+cbar4 = plt.colorbar(scatter4, ax=axes[1, 0], ticks=[0,1,2])
+cbar4.set_label('Subtype', fontsize=11, fontweight='bold')
+
+# t-SNE
+scatter5 = axes[1, 1].scatter(tsne_log_result[:, 0], tsne_log_result[:, 1],
+                             c=second_guess_labels_optimal, cmap='Set2', alpha=0.7,
+                             s=25, edgecolors='black', linewidth=0.5)
+axes[1, 1].set_xlabel('t-SNE 1', fontsize=12, fontweight='bold')
+axes[1, 1].set_ylabel('t-SNE 2', fontsize=12, fontweight='bold')
+axes[1, 1].set_title('FINAL: k=3 (PCA 5D+K-means) - t-SNE Space', fontsize=13, fontweight='bold')
+axes[1, 1].grid(True, alpha=0.3)
+cbar5 = plt.colorbar(scatter5, ax=axes[1, 1], ticks=[0,1,2])
+cbar5.set_label('Subtype', fontsize=11, fontweight='bold')
+
+# UMAP
+scatter6 = axes[1, 2].scatter(umap_log_result[:, 0], umap_log_result[:, 1],
+                             c=second_guess_labels_optimal, cmap='Set2', alpha=0.7,
+                             s=25, edgecolors='black', linewidth=0.5)
+axes[1, 2].set_xlabel('UMAP 1', fontsize=12, fontweight='bold')
+axes[1, 2].set_ylabel('UMAP 2', fontsize=12, fontweight='bold')
+axes[1, 2].set_title('FINAL: k=3 (PCA 5D+K-means) - UMAP Space', fontsize=13, fontweight='bold')
+axes[1, 2].grid(True, alpha=0.3)
+cbar6 = plt.colorbar(scatter6, ax=axes[1, 2], ticks=[0,1,2])
+cbar6.set_label('Subtype', fontsize=11, fontweight='bold')
+
+plt.tight_layout()
+plt.show()
+```
+
+---
+
+
+
+Based on rigorous stability analysis across multiple methodological frameworks, **k=2 represents the most robust structure in this breast cancer RNASeq dataset**. The predictions saved to `results/best_subtype_labels.csv` (generated using PCA 5D + K-means, the optimal configuration from joint search) achieve 99.7% stability and provide the most reliable unsupervised classification of these 1,043 patients into two molecular subtypes.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
