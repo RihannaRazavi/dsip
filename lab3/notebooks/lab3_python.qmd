@@ -1,0 +1,2697 @@
+---
+title: "Lab 3: Cloud Prediction in Polar Satellite Imagery"
+author: "Rihanna Razavi"
+date: today
+format: 
+  html:
+    code-fold: true
+    code-summary: "Show Code"
+    code-tools: true
+    theme: sandstone
+    lightbox: true
+    embed-resources: true
+jupyter: python3
+toc: true
+execute: 
+  warning: false
+  message: false
+---
+```{python}
+#| label: setup
+import sys
+sys.path.append("..")
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from os.path import join as oj
+
+# Set random seed for reproducibility
+np.random.seed(42)
+
+# Set plotting style
+sns.set_style("whitegrid")
+plt.rcParams['figure.figsize'] = (12, 8)
+
+# Define paths
+DATA_PATH = oj("..", "data")
+```
+
+# Introduction
+
+Cloud detection in polar regions presents a unique challenge for satellite-based Earth observation. In these regions, clouds and ice-covered surfaces exhibit similar visual characteristics in satellite imagery, making it difficult for automated systems to distinguish between them. This ambiguity has significant implications for climate monitoring, weather forecasting, and understanding polar atmospheric dynamics.
+
+In this analysis, we collaborate with NASA scientists to develop a machine learning pipeline for automated cloud detection using data from the MISR (Multi-angle Imaging SpectroRadiometer) instrument aboard NASA's Terra satellite. The MISR sensor captures imagery from nine different viewing angles, providing multi-angular reflectance measurements that contain rich information about surface and atmospheric properties.
+
+Our dataset consists of three expertly-labeled satellite images from polar regions. NASA scientists manually annotated individual pixels as cloudy (+1), non-cloudy (-1), or uncertain (0), providing ground truth for training predictive models. Each pixel is characterized by:
+
+- **Raw radiance measurements**: Five viewing angles (AN, AF, BF, CF, DF) capturing reflected sunlight
+- **Engineered features**: Three custom features (NDAI, SD, CORR) specifically designed for cloud detection in polar regions
+- **Spatial coordinates**: x and y positions within each image
+
+Our goal is to build a prediction model that learns from this small labeled dataset and generalizes to detect clouds in large volumes of unlabeled polar imagery, ultimately supporting NASA's climate research objectives.
+
+# Exploratory Data Analysis
+```{python}
+#| label: load-data
+
+image1 = pd.read_csv(oj(DATA_PATH, "image1.txt"), sep=r'\s+', header=None,
+                     names=['y', 'x', 'expert_label', 'NDAI', 'SD', 'CORR', 
+                            'DF', 'CF', 'BF', 'AF', 'AN'])
+
+image2 = pd.read_csv(oj(DATA_PATH, "image2.txt"), sep=r'\s+', header=None,
+                     names=['y', 'x', 'expert_label', 'NDAI', 'SD', 'CORR', 
+                            'DF', 'CF', 'BF', 'AF', 'AN'])
+
+image3 = pd.read_csv(oj(DATA_PATH, "image3.txt"), sep=r'\s+', header=None,
+                     names=['y', 'x', 'expert_label', 'NDAI', 'SD', 'CORR', 
+                            'DF', 'CF', 'BF', 'AF', 'AN'])
+print(f"Image 1: {image1.shape[0]:,} pixels")
+print(f"Image 2: {image2.shape[0]:,} pixels")
+print(f"Image 3: {image3.shape[0]:,} pixels")
+print(f"Total pixels: {image1.shape[0] + image2.shape[0] + image3.shape[0]:,}")
+
+print("\n=== IMAGE 1 - FIRST FEW ROWS ===")
+print(image1.head())
+for i, img in enumerate([image1, image2, image3], 1):
+    print(f"\nImage {i}:")
+    label_counts = img['expert_label'].value_counts().sort_index()
+    print(f"  Cloud (+1):      {label_counts.get(1, 0):,} ({label_counts.get(1, 0)/len(img)*100:.1f}%)")
+    print(f"  Uncertain (0):   {label_counts.get(0, 0):,} ({label_counts.get(0, 0)/len(img)*100:.1f}%)")
+    print(f"  No Cloud (-1):   {label_counts.get(-1, 0):,} ({label_counts.get(-1, 0)/len(img)*100:.1f}%)")
+```
+
+## Expert Label Visualization
+
+We first visualize the expert-labeled cloud classifications for each satellite image. This provides a spatial understanding of cloud coverage patterns and the distribution of uncertain regions.
+```{python}
+#| label: expert-labels-visualization
+
+fig, axes = plt.subplots(1, 3, figsize=(20, 6))
+
+images = [image1, image2, image3]
+titles = ['Image 1', 'Image 2', 'Image 3']
+colors = {-1: 'steelblue', 0: 'lightgray', 1: 'coral'}
+color_labels = {-1: 'No Cloud', 0: 'Uncertain', 1: 'Cloud'}
+
+for idx, (img, title) in enumerate(zip(images, titles)):
+   
+    img_pivot = img.pivot(index='y', columns='x', values='expert_label')
+    
+    # Create custom colormap
+    cmap = plt.cm.colors.ListedColormap([colors[-1], colors[0], colors[1]])
+    bounds = [-1.5, -0.5, 0.5, 1.5]
+    norm = plt.cm.colors.BoundaryNorm(bounds, cmap.N)
+    
+    # Plot
+    im = axes[idx].imshow(img_pivot, cmap=cmap, norm=norm, aspect='auto', origin='upper')
+    axes[idx].set_xlabel('X Coordinate', fontsize=11, fontweight='bold')
+    axes[idx].set_ylabel('Y Coordinate', fontsize=11, fontweight='bold')
+    axes[idx].set_title(f'{title}\n({len(img):,} pixels)', fontsize=12, fontweight='bold')
+    
+    # Add colorbar
+    cbar = plt.colorbar(im, ax=axes[idx], ticks=[-1, 0, 1])
+    cbar.set_ticklabels(['No Cloud (-1)', 'Uncertain (0)', 'Cloud (+1)'])
+
+plt.tight_layout()
+plt.show()
+print("\n=== SPATIAL STATISTICS ===")
+for i, img in enumerate([image1, image2, image3], 1):
+    print(f"\nImage {i}:")
+    print(f"  X range: [{img['x'].min()}, {img['x'].max()}] (width: {img['x'].max() - img['x'].min() + 1})")
+    print(f"  Y range: [{img['y'].min()}, {img['y'].max()}] (height: {img['y'].max() - img['y'].min() + 1})")
+    print(f"  Total pixels: {len(img):,}")
+```
+
+
+
+1. **Spatial coherence**: Cloud and non-cloud regions form contiguous spatial clusters rather than random isolated pixels, consistent with the physical nature of cloud formations and ice surfaces.
+
+2. **Class imbalance**: Non-cloudy pixels (blue) dominate all three images, reflecting the prevalence of clear polar surfaces. Cloud pixels (red) are concentrated in specific regions, creating a class imbalance challenge for prediction modeling.
+
+3. **Uncertain regions**: Gray pixels (label=0) appear at cloud boundaries and transitional zones where even expert annotators found classification ambiguous. These regions likely represent thin clouds, cloud edges, or mixed pixels where both cloud and surface contribute to the radiance signal.
+
+4. **Image variability**: The three images show different cloud coverage patterns—Image 2 appears to have more extensive cloud cover, while Images 2 and 3 show more fragmented cloud structures. This variability is important for model generalization.
+
+## Relationship Between Radiance Angles
+
+The MISR instrument measures reflected sunlight from five different viewing angles (AN, AF, BF, CF, DF). These multi-angle observations provide complementary information about surface and atmospheric properties that single-angle measurements cannot capture.
+```{python}
+#| label: radiance-relationship
+all_data = pd.concat([image1, image2, image3], ignore_index=True)
+radiances = ['AN', 'AF', 'BF', 'CF', 'DF']
+
+# Create pairplot
+fig = plt.figure(figsize=(16, 14))
+g = sns.PairGrid(all_data[radiances], height=2.5, aspect=1)
+g.map_upper(sns.scatterplot, alpha=0.3, s=5)
+g.map_diag(sns.histplot, kde=True, color='steelblue')
+g.map_lower(sns.kdeplot, cmap='Blues', fill=True, levels=5)
+
+for ax in g.axes.flatten():
+    ax.set_xlabel(ax.get_xlabel(), fontsize=10, fontweight='bold')
+    ax.set_ylabel(ax.get_ylabel(), fontsize=10, fontweight='bold')
+
+plt.suptitle('Pairwise Relationships Between Radiance Angles', 
+             fontsize=14, fontweight='bold', y=1.001)
+plt.tight_layout()
+plt.show()
+
+# Compute correlation matrix
+radiance_corr = all_data[radiances].corr()
+
+print("\n=== RADIANCE CORRELATION MATRIX ===")
+print(radiance_corr.round(3))
+
+# Visualize correlation heatmap
+fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+sns.heatmap(radiance_corr, annot=True, fmt='.3f', cmap='RdBu_r', 
+            center=0, vmin=-1, vmax=1, square=True, 
+            linewidths=1, cbar_kws={"shrink": 0.8}, ax=ax)
+ax.set_title('Correlation Heatmap: Radiance Angles', fontsize=13, fontweight='bold')
+plt.tight_layout()
+plt.show()
+
+# Summary statistics
+print("\n=== RADIANCE SUMMARY STATISTICS ===")
+print(all_data[radiances].describe())
+```
+
+
+The radiance measurements mostly exhibit very strong positive correlations (r > 0.9 for most pairs), indicating they are dominated by common factors such as solar illumination geometry and surface albedo. However, several important patterns emerge:
+
+1. **Viewing angle effects**: Despite high correlations, radiances from different viewing angles show systematic differences in their distributions. Forward-scattering angles (AF, BF) tend to have slightly higher radiances than nadir (AN) or backward angles (CF, DF) due to geometric scattering properties.
+
+2. **Non-linear relationships**: The scatter plots reveal subtle non-linearities and heteroscedasticity, particularly at high radiance values. This suggests that simple linear combinations of radiances may not fully capture the information content.
+
+3. **Multicollinearity implications**: The extremely high correlations (r > 0.95) indicate severe multicollinearity, which could be problematic for certain prediction models (e.g., linear regression with all angles as predictors). Dimension reduction or regularization may be necessary.
+
+4. **Dynamic range**: All radiances span similar ranges (approximately 0-250), with right-skewed distributions showing many low-radiance pixels and fewer high-radiance pixels. This is consistent with polar regions having high albedo surfaces.
+
+## Relationship Between Engineered Features
+
+The three engineered features (NDAI, SD, CORR) were specifically designed by domain experts to enhance cloud detection in polar regions, as described in Yu et al. (2008).
+```{python}
+#| label: engineered-features-relationships
+
+# Select engineered features
+features = ['NDAI', 'SD', 'CORR']
+fig = plt.figure(figsize=(16, 14))
+labeled_data = all_data[all_data['expert_label'] != 0].copy()
+labeled_data['label_str'] = labeled_data['expert_label'].map({-1: 'No Cloud', 1: 'Cloud'})
+
+g = sns.pairplot(labeled_data[features + ['label_str']], hue='label_str',
+                palette={'Cloud': 'pink', 'No Cloud': 'steelblue'},
+                plot_kws={'alpha': 0.4, 's': 10},
+                diag_kws={'alpha': 0.6},
+                height=3.5, aspect=1)
+
+g.fig.suptitle('Engineered Features Colored by Expert Label', 
+              fontsize=14, fontweight='bold', y=1.001)
+plt.tight_layout()
+plt.show()
+
+feature_corr = all_data[features].corr()
+
+print("\n=== ENGINEERED FEATURE CORRELATION MATRIX ===")
+print(feature_corr.round(3))
+
+fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+sns.heatmap(feature_corr, annot=True, fmt='.3f', cmap='RdBu_r',
+            center=0, vmin=-1, vmax=1, square=True,
+            linewidths=1, cbar_kws={"shrink": 0.8}, ax=ax)
+ax.set_title('Correlation Heatmap: Engineered Features', fontsize=13, fontweight='bold')
+plt.tight_layout()
+plt.show()
+print("\n=== ENGINEERED FEATURE SUMMARY STATISTICS ===")
+print(all_data[features].describe())
+
+# Separation by expert label
+print("\n=== FEATURE VALUES BY EXPERT LABEL ===")
+for feature in features:
+    print(f"\n{feature}:")
+    print(all_data.groupby('expert_label')[feature].describe()[['mean', 'std', '50%']])
+```
+
+
+The engineered features show notably different behavior compared to raw radiances:
+
+1. **Lower correlations**: NDAI, SD, and CORR exhibit weak-to-moderate correlations (|r| <= 0.6), indicating they capture complementary information. This is by design—domain experts engineered these features to be orthogonal indicators of cloud properties.
+
+2. **Class separation**: The pairplot reveals some separation between cloud and no-cloud regions in feature space, particularly along the NDAI axis. Clouds tend to cluster in specific regions of the (NDAI, SD, CORR) space, suggesting these features have discriminative power.
+
+3. **Feature interpretations**:
+   - **NDAI** (Normalized Difference Angular Index): Shows the clearest univariate separation between clouds and clear sky. Positive NDAI values tend to correspond to clouds, while negative values indicate clear surfaces.
+   - **SD** (Standard Deviation): Measures variability across viewing angles. Higher SD often indicates textured clouds.
+   - **CORR** (Correlation): Captures angular correlation structure, related to particle scattering properties.
+
+4. **Non-Gaussian distributions**: All three features show non-normal distributions with varying degrees of skewness and multi-modality, suggesting non-linear decision boundaries may be necessary for optimal classification.
+
+## Relationship Between Radiances and Engineered Features
+
+Finally, we examine how the custom features relate to the underlying radiance measurements.
+```{python}
+#| label: radiance-feature-relationships
+
+# Compute full correlation matrix
+all_predictors = radiances + features
+full_corr = all_data[all_predictors].corr()
+
+# Extract radiance-feature block
+radiance_feature_corr = full_corr.loc[radiances, features]
+
+print("\n=== RADIANCE-FEATURE CORRELATION MATRIX ===")
+print(radiance_feature_corr.round(3))
+
+# Visualize heatmap
+fig, ax = plt.subplots(1, 1, figsize=(8, 10))
+sns.heatmap(radiance_feature_corr, annot=True, fmt='.3f', cmap='RdBu_r',
+            center=0, vmin=-1, vmax=1,
+            linewidths=1, cbar_kws={"shrink": 0.8}, ax=ax)
+ax.set_xlabel('Engineered Features', fontsize=12, fontweight='bold')
+ax.set_ylabel('Radiance Angles', fontsize=12, fontweight='bold')
+ax.set_title('Correlation: Radiances vs Engineered Features', fontsize=13, fontweight='bold')
+plt.tight_layout()
+plt.show()
+
+# Scatter plots of key relationships
+fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+
+relationships = [
+    ('AN', 'NDAI'), ('BF', 'NDAI'), ('DF', 'NDAI'),
+    ('AN', 'SD'), ('BF', 'SD'), ('CORR', 'SD')
+]
+
+for idx, (x_var, y_var) in enumerate(relationships):
+    ax = axes[idx // 3, idx % 3]
+    
+    # Sample for visualization
+    sample = labeled_data.sample(min(5000, len(labeled_data)), random_state=42)
+    
+    for label, color in [(1, 'coral'), (-1, 'steelblue')]:
+        mask = sample['expert_label'] == label
+        ax.scatter(sample.loc[mask, x_var], sample.loc[mask, y_var],
+                  c=color, alpha=0.3, s=5, label=color_labels[label])
+    
+    ax.set_xlabel(x_var, fontsize=11, fontweight='bold')
+    ax.set_ylabel(y_var, fontsize=11, fontweight='bold')
+    ax.set_title(f'{x_var} vs {y_var}', fontsize=12, fontweight='bold')
+    ax.legend(fontsize=9)
+    ax.grid(True, alpha=0.3)
+
+plt.suptitle('Key Relationships: Radiances vs Engineered Features', 
+             fontsize=14, fontweight='bold', y=1.001)
+plt.tight_layout()
+plt.show()
+```
+
+The radiance-feature correlations reveal important insights about feature engineering:
+
+1. **Weak individual correlations**: No single radiance shows strong correlation (|r| > 0.4) with any engineered feature. This confirms that NDAI, SD, and CORR are not simple linear transforms of individual radiances but rather capture multi-angle relationships.
+
+2. **NDAI encoding**: NDAI shows modest negative correlation with nadir angle (AN) and positive correlation with forward angles (AF, BF), consistent with its design as a normalized difference index across viewing geometries.
+
+3. **SD as angular variation**: SD (standard deviation across angles) shows near-zero correlation with any single radiance, as expected—it measures variability rather than absolute magnitude.
+
+4. **Feature complementarity**: The weak radiance-feature correlations justify including both raw radiances and engineered features as predictors. The engineered features provide information not redundant with individual angle measurements.
+
+5. **Non-linear separability**: The scatter plots show that cloud/no-cloud separation is often clearer in feature space (e.g., NDAI) than in raw radiance space, highlighting the value of domain-informed feature engineering for this problem.
+
+---
+
+```{python}
+#| label: predictor-label-relationships
+#| fig-cap: "Relationship between expert cloud labels and predictor features. Top row: Raw radiances show moderate separation between clouds (red) and non-cloudy pixels (blue), with clouds generally exhibiting higher radiance values. Bottom row: Engineered features (especially NDAI) show stronger discriminative power, with NDAI exhibiting clear bimodal separation between cloud classes."
+
+# Combine all images
+all_data = pd.concat([image1, image2, image3], ignore_index=True)
+
+# Filter to labeled data only (exclude uncertain)
+labeled_data = all_data[all_data['expert_label'] != 0].copy()
+labeled_data['label_str'] = labeled_data['expert_label'].map({-1: 'No Cloud', 1: 'Cloud'})
+
+# Select features for visualization
+radiances = ['AN', 'AF', 'BF', 'CF', 'DF']
+features = ['NDAI', 'SD', 'CORR']
+all_features = radiances + features
+
+# Create comprehensive visualization
+fig, axes = plt.subplots(3, 3, figsize=(18, 16))
+
+# Plot each feature
+for idx, feature in enumerate(all_features):
+    row = idx // 3
+    col = idx % 3
+    ax = axes[row, col]
+    
+    # Violin plot with strip overlay
+    parts = ax.violinplot(
+        [labeled_data[labeled_data['expert_label'] == -1][feature],
+         labeled_data[labeled_data['expert_label'] == 1][feature]],
+        positions=[0, 1],
+        showmeans=True,
+        showmedians=True,
+        widths=0.7
+    )
+    
+    # Color the violins
+    for pc, color in zip(parts['bodies'], ['steelblue', 'coral']):
+        pc.set_facecolor(color)
+        pc.set_alpha(0.6)
+    
+    # Add box plot overlay
+    bp = ax.boxplot(
+        [labeled_data[labeled_data['expert_label'] == -1][feature],
+         labeled_data[labeled_data['expert_label'] == 1][feature]],
+        positions=[0, 1],
+        widths=0.3,
+        patch_artist=True,
+        showfliers=False
+    )
+    
+    for patch, color in zip(bp['boxes'], ['steelblue', 'coral']):
+        patch.set_facecolor(color)
+        patch.set_alpha(0.3)
+    
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels(['No Cloud', 'Cloud'])
+    ax.set_ylabel(feature, fontsize=11, fontweight='bold')
+    ax.set_title(f'{feature} by Expert Label', fontsize=12, fontweight='bold')
+    ax.grid(True, alpha=0.3, axis='y')
+
+plt.tight_layout()
+plt.show()
+
+# Quantitative analysis: Effect sizes and statistical tests
+print("\n=== QUANTITATIVE ANALYSIS: FEATURE SEPARATION BY CLOUD LABEL ===\n")
+
+from scipy import stats
+
+results = []
+
+for feature in all_features:
+    cloud_vals = labeled_data[labeled_data['expert_label'] == 1][feature]
+    no_cloud_vals = labeled_data[labeled_data['expert_label'] == -1][feature]
+    
+    # Descriptive statistics
+    cloud_mean = cloud_vals.mean()
+    no_cloud_mean = no_cloud_vals.mean()
+    cloud_std = cloud_vals.std()
+    no_cloud_std = no_cloud_vals.std()
+    
+    # Effect size (Cohen's d)
+    pooled_std = np.sqrt((cloud_std**2 + no_cloud_std**2) / 2)
+    cohens_d = (cloud_mean - no_cloud_mean) / pooled_std
+    
+    # Mann-Whitney U test (non-parametric)
+    u_stat, p_value = stats.mannwhitneyu(cloud_vals, no_cloud_vals, alternative='two-sided')
+    
+    # Area Under ROC Curve (AUC) as discrimination metric
+    from sklearn.metrics import roc_auc_score
+    labels_binary = (labeled_data['expert_label'] == 1).astype(int)
+    try:
+        auc = roc_auc_score(labels_binary, labeled_data[feature])
+    except:
+        # If feature needs to be flipped
+        auc = max(roc_auc_score(labels_binary, labeled_data[feature]),
+                  1 - roc_auc_score(labels_binary, labeled_data[feature]))
+    
+    results.append({
+        'Feature': feature,
+        'Cloud_Mean': cloud_mean,
+        'NoCloud_Mean': no_cloud_mean,
+        'Difference': cloud_mean - no_cloud_mean,
+        'Cohen_d': cohens_d,
+        'AUC': auc,
+        'p_value': p_value
+    })
+    
+    print(f"{feature:6s}:")
+    print(f"  Cloud:        mean={cloud_mean:8.2f}, std={cloud_std:7.2f}")
+    print(f"  No Cloud:     mean={no_cloud_mean:8.2f}, std={no_cloud_std:7.2f}")
+    print(f"  Difference:   {cloud_mean - no_cloud_mean:+8.2f}")
+    print(f"  Cohen's d:    {cohens_d:+7.3f} ({'large' if abs(cohens_d) > 0.8 else 'medium' if abs(cohens_d) > 0.5 else 'small'})")
+    print(f"  AUC:          {auc:7.3f} ({'excellent' if auc > 0.9 else 'good' if auc > 0.8 else 'fair' if auc > 0.7 else 'poor'})")
+    print(f"  p-value:      {p_value:.2e} ({'***' if p_value < 0.001 else '**' if p_value < 0.01 else '*' if p_value < 0.05 else 'ns'})")
+    print()
+
+# Create summary table
+results_df = pd.DataFrame(results)
+results_df['abs_Cohen_d'] = results_df['Cohen_d'].abs()
+results_df = results_df.sort_values('AUC', ascending=False)
+
+print("\n=== FEATURE RANKING BY DISCRIMINATIVE POWER (AUC) ===")
+print(results_df[['Feature', 'AUC', 'Cohen_d', 'Difference']].to_string(index=False))
+```
+
+
+
+```{python}
+#| label: feature-distributions-by-label
+#| fig-cap: "Distribution comparison of top discriminative features by cloud label. NDAI shows the strongest separation with minimal overlap between distributions. Radiances show overlapping distributions with clouds skewed toward higher values. Red vertical lines indicate class means."
+
+# Select top 6 features by AUC
+top_features = results_df.head(6)['Feature'].tolist()
+
+fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+
+for idx, feature in enumerate(top_features):
+    ax = axes[idx // 3, idx % 3]
+    
+    cloud_vals = labeled_data[labeled_data['expert_label'] == 1][feature]
+    no_cloud_vals = labeled_data[labeled_data['expert_label'] == -1][feature]
+    
+    # Plot distributions
+    ax.hist(no_cloud_vals, bins=50, alpha=0.5, color='steelblue', 
+            label='No Cloud', density=True, edgecolor='black', linewidth=0.5)
+    ax.hist(cloud_vals, bins=50, alpha=0.5, color='coral',
+            label='Cloud', density=True, edgecolor='black', linewidth=0.5)
+    
+    # Add mean lines
+    ax.axvline(no_cloud_vals.mean(), color='steelblue', linestyle='--', 
+              linewidth=2, label=f'No Cloud Mean: {no_cloud_vals.mean():.2f}')
+    ax.axvline(cloud_vals.mean(), color='coral', linestyle='--',
+              linewidth=2, label=f'Cloud Mean: {cloud_vals.mean():.2f}')
+    
+    ax.set_xlabel(feature, fontsize=11, fontweight='bold')
+    ax.set_ylabel('Density', fontsize=11, fontweight='bold')
+    
+    # Add AUC to title
+    auc_val = results_df[results_df['Feature'] == feature]['AUC'].values[0]
+    ax.set_title(f'{feature} (AUC={auc_val:.3f})', fontsize=12, fontweight='bold')
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+```
+
+
+
+```{python}
+#| label: correlation-with-labels
+#| fig-cap: "Point-biserial correlation between features and cloud labels. NDAI shows strongest positive correlation (r=0.78), indicating higher NDAI values are strongly associated with clouds. Radiances show moderate positive correlations. CORR shows weak negative correlation."
+
+# Compute point-biserial correlation (correlation between continuous feature and binary label)
+correlations = []
+
+for feature in all_features:
+    # Convert labels to binary (0 = no cloud, 1 = cloud)
+    binary_labels = (labeled_data['expert_label'] == 1).astype(int)
+    corr = labeled_data[feature].corr(binary_labels)
+    
+    correlations.append({
+        'Feature': feature,
+        'Correlation': corr,
+        'Abs_Correlation': abs(corr)
+    })
+
+corr_df = pd.DataFrame(correlations).sort_values('Abs_Correlation', ascending=False)
+
+# Visualize
+fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+
+colors = ['coral' if c > 0 else 'steelblue' for c in corr_df['Correlation']]
+bars = ax.barh(range(len(corr_df)), corr_df['Correlation'], color=colors, alpha=0.7, edgecolor='black')
+
+ax.set_yticks(range(len(corr_df)))
+ax.set_yticklabels(corr_df['Feature'])
+ax.set_xlabel('Point-Biserial Correlation with Cloud Label', fontsize=12, fontweight='bold')
+ax.set_title('Feature Correlation with Expert Cloud Labels', fontsize=13, fontweight='bold')
+ax.axvline(0, color='black', linestyle='-', linewidth=1)
+ax.grid(True, alpha=0.3, axis='x')
+
+# Add value labels
+for i, (feat, corr) in enumerate(zip(corr_df['Feature'], corr_df['Correlation'])):
+    ax.text(corr + 0.02 if corr > 0 else corr - 0.02, i, f'{corr:.3f}',
+           va='center', ha='left' if corr > 0 else 'right', fontsize=10, fontweight='bold')
+
+plt.tight_layout()
+plt.show()
+
+print("\n=== POINT-BISERIAL CORRELATIONS ===")
+print(corr_df.to_string(index=False))
+```
+## Relationship Between Expert Labels and Predictors
+
+Having explored the internal structure of radiances and engineered features, we now examine their relationship with the target variable: expert cloud classifications. Understanding which features best discriminate between clouds and non-cloudy regions will guide our prediction modeling strategy.
+
+
+
+The violin and box plots reveal substantial differences in feature distributions between cloud and non-cloud pixels:
+
+### Radiance Patterns
+
+1. **Directional consistency**: All five radiance angles (AN, AF, BF, CF, DF) show the same pattern—clouds exhibit **higher radiance values** than non-cloudy surfaces. This is counterintuitive at first, since ice and snow (common in polar regions) are highly reflective. However, this pattern suggests that in these particular images, non-cloudy regions may include open water, dark terrain, or shadowed ice, while clouds represent bright, elevated reflective surfaces.
+
+2. **Moderate overlap**: Despite mean differences, cloud and no-cloud distributions show considerable overlap across all radiance angles. The interquartile ranges (boxes) overlap substantially, indicating that radiance alone provides only moderate discrimination. Many individual pixels have radiance values that could plausibly belong to either class.
+
+3. **Similar effect sizes**: The separation between cloud/no-cloud is roughly equivalent across all five viewing angles, consistent with our earlier finding that radiances are highly correlated. This redundancy suggests that using all five angles may not provide much additional information beyond using one or two representative angles.
+
+### Engineered Feature Patterns
+
+4. **NDAI as primary discriminator**: The Normalized Difference Angular Index (NDAI) shows dramatically stronger separation than any radiance. The distributions are nearly bimodal, with clouds centered around positive NDAI values and non-cloudy pixels around negative values. The minimal overlap suggests NDAI was expertly engineered to capture the essence of cloud versus surface signatures.
+
+5. **SD shows partial separation**: Standard Deviation (SD) exhibits moderate discriminative power, with clouds showing higher variability across viewing angles. This aligns with the physical expectation that clouds have more complex, heterogeneous scattering properties compared to uniform ice surfaces.
+
+6. **CORR shows weak discrimination**: The Correlation (CORR) feature shows the weakest separation of all engineered features, with largely overlapping distributions. While CORR may still provide complementary information in multivariate models, it is not a strong univariate predictor.
+
+
+The overlaid histograms provide deeper insights into feature discrimination:
+
+1. **NDAI: Clear bimodal structure**: The NDAI distributions for cloud and no-cloud pixels are nearly completely separated, with only minor overlap in the transition region around NDAI ≈ 0. The cloud distribution is centered around +0.3 to +0.5, while no-cloud pixels cluster around -0.2 to -0.3. This **2-3 standard deviation separation** is exceptional for a single feature.
+
+2. **Radiances: Right-skewed with overlap**: All radiances show right-skewed (long right tail) distributions, typical of reflectance measurements. Cloud distributions are shifted toward higher values but overlap substantially with no-cloud tails. This overlap occurs because some non-cloudy pixels (bright ice, sunlit surfaces) can be as reflective as thin or shadowed clouds.
+
+3. **SD: Moderate separation**: The SD histograms show cloud pixels with higher mean and greater spread. Interestingly, the no-cloud distribution is more concentrated, suggesting that clear surfaces have more uniform angular signatures, while clouds introduce greater viewing-angle variability.
+
+
+**Quantitative Discrimination Analysis:**
+
+The statistical analysis confirms and quantifies our visual observations:
+
+### Effect Sizes (Cohen's d)
+
+Cohen's d measures the standardized mean difference between cloud and no-cloud groups:
+- **Large effects** (|d| > 0.8): NDAI (d ≈ 1.5-2.0)
+- **Medium effects** (0.5 < |d| < 0.8): SD, all radiances
+- **Small effects** (|d| < 0.5): CORR
+
+NDAI's large effect size indicates that cloud and no-cloud means differ by approximately 1.5-2 pooled standard deviations—a rare level of separation for real-world classification problems.
+
+### Discrimination Power (AUC)
+
+The Area Under the ROC Curve (AUC) quantifies how well each feature alone could classify clouds:
+- **Excellent** (AUC > 0.9): NDAI (AUC ≈ 0.93)
+
+An AUC of 0.93 for NDAI means that if we randomly select one cloud pixel and one no-cloud pixel, there is a 93% probability that NDAI will assign a higher value to the cloud pixel—an impressive univariate performance.
+
+### Point-Biserial Correlations
+
+Correlations with binary cloud labels reveal:
+- **Strong positive** (r > 0.7): NDAI
+- **Moderate positive** (0.3 < r < 0.7): All radiances, SD
+- **Weak negative** (r ≈ -0.1 to -0.3): CORR
+
+ugh this effect is minor.
+
+### Statistical Significance
+
+All features show **highly significant** differences between cloud and no-cloud groups (p < 0.001), indicated by Mann-Whitney U tests. This confirms that observed differences are not due to sampling variability but reflect genuine systematic patterns in the data.
+
+---
+
+
+
+Our exploratory analysis reveals several key insights that will guide our prediction modeling strategy:
+
+### 1. Feature Importance Hierarchy
+
+The discriminative power ranking is clear:
+1. **NDAI** (engineered): Dominant single predictor, near-perfect bimodal separation
+2. **Radiances** (raw): Moderate discrimination, highly redundant
+3. **SD** (engineered): Moderate discrimination, complements radiances
+4. **CORR** (engineered): Weak discrimination, marginal utility
+
+**Modeling Implication**: A simple logistic regression or decision tree using only NDAI might achieve 90%+ accuracy. However, incorporating radiances and SD could capture additional nuances and improve performance on ambiguous boundary cases.
+
+### 2. Class Imbalance Challenge
+
+Non-cloudy pixels vastly outnumber clouds (~70-80% no-cloud in most images). This class imbalance has several consequences:
+- **Naive models** that predict "no-cloud" for all pixels could achieve 70-80% accuracy without learning anything useful
+- **Evaluation metrics** like accuracy are misleading; we should focus on balanced metrics (F1, AUC, balanced accuracy)
+- **Sampling strategies** (e.g., SMOTE, class weights) may be necessary to prevent models from ignoring the minority class
+
+### 3. Non-Linear Decision Boundaries
+
+While NDAI shows clear bimodal separation, the overlap regions and non-Gaussian distributions suggest that:
+- **Linear models** (logistic regression, linear SVM) should perform well given NDAI's strength, but may miss non-linear interactions
+- **Non-linear models** (random forests, gradient boosting, kernel SVM) could capture complex interactions between radiances and features
+- **Feature interactions** (e.g., NDAI × SD, radiance ratios) might further enhance discrimination
+
+### 4. Uncertain Pixels as Boundary Cases
+
+Pixels labeled as "uncertain" (label = 0) by experts likely fall in the overlap regions of feature distributions. These represent:
+- **Thin clouds** with mixed cloud/surface signatures
+- **Cloud edges** with partial cloud coverage within the pixel
+- **Transitional atmospheres** (haze, fog, aerosols)
+
+**Modeling Decision**: Should we:
+- **Exclude uncertain pixels** from training (train only on confident labels)?
+- **Treat as a third class** (multi-class classification: cloud/uncertain/no-cloud)?
+- **Merge with one class** or split probabilistically?
+
+For this lab, we will likely **exclude uncertain pixels** from training but evaluate model predictions on them to assess confidence calibration.
+
+### 5. Spatial Autocorrelation
+
+The expert label images showed strong spatial clustering—clouds and clear regions form contiguous patches rather than isolated pixels. This has important implications:
+- **Pixels are not independent**: Neighboring pixels share similar features due to spatial continuity
+- **Cross-validation strategy**: Random train/test splits may overestimate performance if neighboring pixels appear in both sets. We might consider spatial blocking (entire image regions in train vs. test) for more conservative estimates.
+- **Post-processing**: Spatial smoothing or morphological operations could reduce isolated misclassifications
+
+### 6. Multi-Collinearity Considerations
+
+The extremely high correlations between radiances (r > 0.95) create **multicollinearity**, which affects certain models:
+- **Linear/logistic regression**: Unstable coefficient estimates, inflated standard errors → consider using only 1-2 radiances or PCA
+- **Tree-based methods**: Unaffected by multicollinearity, will automatically select the most informative radiance at each split
+- **Regularized models** (ridge, lasso, elastic net): Naturally handle multicollinearity through shrinkage
+
+---
+
+With this comprehensive understanding of the data structure, feature relationships, and class separability, we now proceed to build prediction models that leverage these insights to achieve robust cloud detection in polar satellite imagery.
+
+
+
+
+
+
+
+
+
+
+
+
+```{python}
+```
+
+```{python}
+```
+
+
+```{python}
+```
+
+
+
+```{python}
+```
+
+
+
+```{python}
+```
+
+
+
+```{python}
+```
+
+
+
+```{python}
+```
+
+
+
+```{python}
+```
+
+
+
+```{python}
+```
+
+
+
+
+```{python}
+```
+
+
+
+
+```{python}
+```
+
+
+
+
+```{python}
+```
+
+
+
+
+```{python}
+```
+
+
+
+
+```{python}
+```
+
+
+
+
+
+```{python}
+```
+
+
+
+
+
+```{python}
+```
+
+
+
+
+
+
+```{python}
+```
+
+
+
+
+
+```{python}
+```
+
+
+
+#| label: prediction-problem-formulation
+#| echo: true
+
+## Prediction Problem Formulation
+
+**Problem Definition:**
+
+We formulate this as a **binary classification problem** where the goal is to predict whether a pixel contains cloud (+1) or does not contain cloud (-1). We **exclude uncertain pixels (label = 0)** from both training and evaluation.
+
+**Justification:**
+
+1. **Expert label distribution**: The uncertain labels (0) represent ambiguous cases where even domain experts could not confidently classify the pixel. These likely represent transitional atmospheric conditions (thin clouds, haze, cloud edges) that have inherently mixed signatures.
+
+2. **Class semantics**: From a practical satellite imaging perspective, the primary operational need is to distinguish clear sky from cloudy regions. The binary distinction is more actionable than a three-class taxonomy.
+
+3. **Training stability**: Including uncertain pixels as a third class would introduce label noise, as these pixels may inconsistently exhibit cloud-like or surface-like features depending on viewing angle, sun position, or atmospheric conditions.
+
+4. **Model interpretability**: Binary classification allows us to directly interpret model outputs as "probability of cloud presence," which is more intuitive than navigating a three-class probability distribution.
+
+5. **Evaluation clarity**: Standard binary classification metrics (AUC-ROC, precision, recall, F1) are well-established and easily interpretable for stakeholders.
+
+**Alternative formulations considered but rejected:**
+- **Three-class classification** (cloud/uncertain/no-cloud): Adds complexity without clear operational benefit; uncertain pixels represent measurement ambiguity rather than a distinct atmospheric state.
+- **Ordinal regression** (treating -1 < 0 < +1 as ordered): Assumes equal spacing between classes, which is not conceptually justified.
+- **Probabilistic labels** (uncertain pixels weighted 0.5): Would require specialized loss functions and complicates evaluation.
+
+**Class encoding:**
+- Positive class (y=1): Expert label = +1 (cloud)
+- Negative class (y=0): Expert label = -1 (no cloud)
+- Excluded: Expert label = 0 (uncertain)
+
+
+
+
+#| label: data-splitting-strategy
+#| echo: true
+
+## Data Splitting Strategy
+
+**Splitting Scheme:**
+
+We employ a **stratified random 60/20/20 train/validation/test split** at the pixel level across all three images combined, with the following specifications:
+
+- **Training set**: 60% of labeled pixels (used for model fitting)
+- **Validation set**: 20% of labeled pixels (used for hyperparameter tuning)
+- **Test set**: 20% of labeled pixels (held out for final evaluation)
+- **Stratification**: Maintain class proportions (cloud vs. no-cloud) in each split
+- **Random seed**: 42 (for reproducibility)
+
+**Justification:**
+
+1. **Pooling across images**: Combining all three images before splitting ensures models learn generalizable patterns across different geographic regions, atmospheric conditions, and surface types. This prevents overfitting to image-specific artifacts.
+
+2. **60/20/20 ratio**: 
+   - 60% training provides sufficient data for model learning (~40,000+ pixels)
+   - 20% validation allows robust hyperparameter tuning without excessive computational cost
+   - 20% test provides reliable performance estimates with tight confidence intervals
+
+3. **Stratification**: Maintains the natural class imbalance (~70-80% no-cloud) in each split, preventing validation/test sets from being unrepresentative.
+
+4. **Random (not spatial) splitting**: While spatial autocorrelation exists, random splitting provides optimistic but standard performance estimates. Spatial block cross-validation would be more conservative but is not required for this lab.
+
+**Reproducibility details:**
+- Random seed: 42
+- Stratification variable: binary cloud label (0/1)
+- Exclusion criterion: expert_label == 0 removed before splitting
+- All splits performed simultaneously (single train_test_split call for validation+test, followed by split of remainder)
+```{python}
+#| label: prepare-data
+#| echo: true
+
+# Combine all three images
+all_data = pd.concat([image1, image2, image3], ignore_index=True)
+
+# Filter to labeled data only (exclude uncertain)
+labeled_data = all_data[all_data['expert_label'] != 0].copy()
+
+# Create binary target: +1 → 1 (cloud), -1 → 0 (no cloud)
+labeled_data['cloud_binary'] = (labeled_data['expert_label'] == 1).astype(int)
+
+# Define feature sets
+radiance_features = ['AN', 'AF', 'BF', 'CF', 'DF']
+engineered_features = ['NDAI', 'SD', 'CORR']
+all_features = radiance_features + engineered_features
+
+# Extract features and target
+X = labeled_data[all_features].values
+y = labeled_data['cloud_binary'].values
+
+# Also create feature subsets for ablation
+X_radiance = labeled_data[radiance_features].values
+X_engineered = labeled_data[engineered_features].values
+
+print(f"Total labeled pixels: {len(labeled_data):,}")
+print(f"Cloud pixels (y=1): {(y==1).sum():,} ({100*(y==1).mean():.1f}%)")
+print(f"No-cloud pixels (y=0): {(y==0).sum():,} ({100*(y==0).mean():.1f}%)")
+print(f"\nFeature sets:")
+print(f"  Radiances: {radiance_features}")
+print(f"  Engineered: {engineered_features}")
+print(f"  Combined: {all_features}")
+```
+
+
+
+
+```{python}
+#| label: train-val-test-split
+#| echo: true
+
+from sklearn.model_selection import train_test_split
+
+# Set random seed for reproducibility
+RANDOM_STATE = 42
+
+# First split: separate out test set (20%)
+X_temp, X_test, y_temp, y_test = train_test_split(
+    X, y, test_size=0.20, random_state=RANDOM_STATE, stratify=y
+)
+
+# Also split feature subsets
+X_radiance_temp, X_radiance_test, _, _ = train_test_split(
+    X_radiance, y, test_size=0.20, random_state=RANDOM_STATE, stratify=y
+)
+X_engineered_temp, X_engineered_test, _, _ = train_test_split(
+    X_engineered, y, test_size=0.20, random_state=RANDOM_STATE, stratify=y
+)
+
+# Second split: separate train (60% of total) and validation (20% of total)
+# This means validation is 25% of the temp set (0.25 * 0.80 = 0.20 of total)
+X_train, X_val, y_train, y_val = train_test_split(
+    X_temp, y_temp, test_size=0.25, random_state=RANDOM_STATE, stratify=y_temp
+)
+
+X_radiance_train, X_radiance_val, _, _ = train_test_split(
+    X_radiance_temp, y_temp, test_size=0.25, random_state=RANDOM_STATE, stratify=y_temp
+)
+X_engineered_train, X_engineered_val, _, _ = train_test_split(
+    X_engineered_temp, y_temp, test_size=0.25, random_state=RANDOM_STATE, stratify=y_temp
+)
+
+print("="*80)
+print("DATA SPLITTING SUMMARY")
+print("="*80)
+print(f"\nTraining set:   {len(X_train):,} samples ({100*len(X_train)/len(X):.1f}%)")
+print(f"  Cloud:        {(y_train==1).sum():,} ({100*(y_train==1).mean():.1f}%)")
+print(f"  No-cloud:     {(y_train==0).sum():,} ({100*(y_train==0).mean():.1f}%)")
+
+print(f"\nValidation set: {len(X_val):,} samples ({100*len(X_val)/len(X):.1f}%)")
+print(f"  Cloud:        {(y_val==1).sum():,} ({100*(y_val==1).mean():.1f}%)")
+print(f"  No-cloud:     {(y_val==0).sum():,} ({100*(y_val==0).mean():.1f}%)")
+
+print(f"\nTest set:       {len(X_test):,} samples ({100*len(X_test)/len(X):.1f}%)")
+print(f"  Cloud:        {(y_test==1).sum():,} ({100*(y_test==1).mean():.1f}%)")
+print(f"  No-cloud:     {(y_test==0).sum():,} ({100*(y_test==0).mean():.1f}%)")
+print("="*80)
+```
+
+
+
+
+
+```{python}
+#| label: feature-scaling
+#| echo: true
+
+from sklearn.preprocessing import StandardScaler
+
+# Initialize scalers for each feature set
+scaler_all = StandardScaler()
+scaler_radiance = StandardScaler()
+scaler_engineered = StandardScaler()
+
+# Fit on training data only, transform all splits
+X_train_scaled = scaler_all.fit_transform(X_train)
+X_val_scaled = scaler_all.transform(X_val)
+X_test_scaled = scaler_all.transform(X_test)
+
+X_radiance_train_scaled = scaler_radiance.fit_transform(X_radiance_train)
+X_radiance_val_scaled = scaler_radiance.transform(X_radiance_val)
+X_radiance_test_scaled = scaler_radiance.transform(X_radiance_test)
+
+X_engineered_train_scaled = scaler_engineered.fit_transform(X_engineered_train)
+X_engineered_val_scaled = scaler_engineered.transform(X_engineered_val)
+X_engineered_test_scaled = scaler_engineered.transform(X_engineered_test)
+
+print("Feature scaling completed (StandardScaler: mean=0, std=1)")
+print("Scalers fitted on training data only, applied to all splits")
+```
+
+
+
+
+```{python}
+#| label: model-training-setup
+#| echo: true
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis, QuadraticDiscriminantAnalysis
+from sklearn.naive_bayes import GaussianNB
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, AdaBoostClassifier, ExtraTreesClassifier
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neural_network import MLPClassifier
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import (accuracy_score, precision_score, recall_score, f1_score,
+                             roc_auc_score, confusion_matrix, classification_report,
+                             roc_curve, precision_recall_curve, matthews_corrcoef,
+                             balanced_accuracy_score, cohen_kappa_score)
+import warnings
+warnings.filterwarnings('ignore')
+
+# Create storage for results
+results_dict = {
+    'Model': [],
+    'Feature_Set': [],
+    'Best_Params': [],
+    'Train_Accuracy': [],
+    'Val_Accuracy': [],
+    'Test_Accuracy': [],
+    'Train_Balanced_Acc': [],
+    'Val_Balanced_Acc': [],
+    'Test_Balanced_Acc': [],
+    'Train_F1': [],
+    'Val_F1': [],
+    'Test_F1': [],
+    'Train_Precision': [],
+    'Val_Precision': [],
+    'Test_Precision': [],
+    'Train_Recall': [],
+    'Val_Recall': [],
+    'Test_Recall': [],
+    'Train_AUC': [],
+    'Val_AUC': [],
+    'Test_AUC': [],
+    'Train_MCC': [],
+    'Val_MCC': [],
+    'Test_MCC': [],
+    'Train_Kappa': [],
+    'Val_Kappa': [],
+    'Test_Kappa': [],
+    'Trained_Model': []
+}
+
+# Feature set configurations
+feature_configs = {
+    'Radiance_Only': (X_radiance_train_scaled, X_radiance_val_scaled, X_radiance_test_scaled),
+    'Engineered_Only': (X_engineered_train_scaled, X_engineered_val_scaled, X_engineered_test_scaled),
+    'All_Features': (X_train_scaled, X_val_scaled, X_test_scaled)
+}
+
+print("Model training framework initialized")
+print(f"Number of classifiers to train: 5")
+print(f"Feature configurations: {list(feature_configs.keys())}")
+print(f"Total model fits: 12 classifiers × 3 feature sets = 36 configurations")
+```
+
+
+
+```{python}
+#| label: evaluation-function
+#| echo: true
+
+def evaluate_model(model, X_train, X_val, X_test, y_train, y_val, y_test, model_name, feature_set):
+    """
+    Comprehensive evaluation of a trained model across all splits.
+    Returns dictionary of metrics.
+    """
+    metrics = {}
+    
+    # Predictions
+    y_train_pred = model.predict(X_train)
+    y_val_pred = model.predict(X_val)
+    y_test_pred = model.predict(X_test)
+    
+    # Prediction probabilities (for AUC)
+    if hasattr(model, 'predict_proba'):
+        y_train_proba = model.predict_proba(X_train)[:, 1]
+        y_val_proba = model.predict_proba(X_val)[:, 1]
+        y_test_proba = model.predict_proba(X_test)[:, 1]
+    elif hasattr(model, 'decision_function'):
+        y_train_proba = model.decision_function(X_train)
+        y_val_proba = model.decision_function(X_val)
+        y_test_proba = model.decision_function(X_test)
+    else:
+        y_train_proba = y_train_pred
+        y_val_proba = y_val_pred
+        y_test_proba = y_test_pred
+    
+    # Calculate metrics for each split
+    for split_name, y_true, y_pred, y_proba in [
+        ('Train', y_train, y_train_pred, y_train_proba),
+        ('Val', y_val, y_val_pred, y_val_proba),
+        ('Test', y_test, y_test_pred, y_test_proba)
+    ]:
+        metrics[f'{split_name}_Accuracy'] = accuracy_score(y_true, y_pred)
+        metrics[f'{split_name}_Balanced_Acc'] = balanced_accuracy_score(y_true, y_pred)
+        metrics[f'{split_name}_Precision'] = precision_score(y_true, y_pred, zero_division=0)
+        metrics[f'{split_name}_Recall'] = recall_score(y_true, y_pred, zero_division=0)
+        metrics[f'{split_name}_F1'] = f1_score(y_true, y_pred, zero_division=0)
+        metrics[f'{split_name}_MCC'] = matthews_corrcoef(y_true, y_pred)
+        metrics[f'{split_name}_Kappa'] = cohen_kappa_score(y_true, y_pred)
+        
+        try:
+            metrics[f'{split_name}_AUC'] = roc_auc_score(y_true, y_proba)
+        except:
+            metrics[f'{split_name}_AUC'] = np.nan
+    
+    metrics['Model'] = model_name
+    metrics['Feature_Set'] = feature_set
+    
+    return metrics
+```
+
+
+
+```{python}
+#| label: train-logistic-regression
+#| echo: true
+#| output: true
+
+print("\n" + "="*80)
+print("1. LOGISTIC REGRESSION")
+print("="*80)
+print("\nDescription: Linear model with logistic link function. Estimates log-odds as linear")
+print("combination of features. Interpretable coefficients. Assumes linear decision boundary.")
+print("\nAssumptions:")
+print("  - Linear relationship between features and log-odds of outcome")
+print("  - Independence of observations (satisfied by random sampling)")
+print("  - No perfect multicollinearity (violated for radiances; regularization helps)")
+print("\nHyperparameters to tune:")
+print("  - C: Inverse regularization strength (smaller = stronger regularization)")
+print("  - penalty: Regularization type (l1, l2, elasticnet)")
+print("  - solver: Optimization algorithm")
+
+# Define hyperparameter grid
+lr_param_grid = {
+    'C': [0.001, 0.01, 0.1, 1, 10, 100],
+    'penalty': ['l2'],  # l1 requires saga solver
+    'solver': ['lbfgs'],
+    'max_iter': [1000],
+    'class_weight': [None, 'balanced']
+}
+
+# Train on each feature set
+for feat_name, (X_tr, X_v, X_te) in feature_configs.items():
+    print(f"\n--- Training on {feat_name} ---")
+    
+    grid_search = GridSearchCV(
+        LogisticRegression(random_state=RANDOM_STATE),
+        lr_param_grid,
+        cv=5,
+        scoring='roc_auc',
+        n_jobs=-1,
+        verbose=0
+    )
+    
+    grid_search.fit(X_tr, y_train)
+    best_model = grid_search.best_estimator_
+    
+    print(f"Best parameters: {grid_search.best_params_}")
+    print(f"Best CV AUC: {grid_search.best_score_:.4f}")
+    
+    # Evaluate
+    metrics = evaluate_model(best_model, X_tr, X_v, X_te, y_train, y_val, y_test,
+                            'Logistic Regression', feat_name)
+    metrics['Best_Params'] = str(grid_search.best_params_)
+    metrics['Trained_Model'] = best_model
+    
+    # Store results
+    for key, value in metrics.items():
+        if key in results_dict:
+            results_dict[key].append(value)
+    
+    print(f"Test Accuracy: {metrics['Test_Accuracy']:.4f}, Test AUC: {metrics['Test_AUC']:.4f}, Test F1: {metrics['Test_F1']:.4f}")
+```
+
+
+
+
+```{python}
+
+#| label: train-lda
+#| echo: true
+#| output: true
+
+print("\n" + "="*80)
+print("2. LINEAR DISCRIMINANT ANALYSIS (LDA)")
+print("="*80)
+print("\nDescription: Finds linear combinations of features that best separate classes.")
+print("Assumes features are normally distributed with equal covariance across classes.")
+print("\nAssumptions:")
+print("  - Multivariate normality within each class")
+print("  - Equal covariance matrices across classes (homoscedasticity)")
+print("  - Linear decision boundary")
+print("\nHyperparameters: No hyperparameters to tune (uses closed-form solution)")
+
+for feat_name, (X_tr, X_v, X_te) in feature_configs.items():
+    print(f"\n--- Training on {feat_name} ---")
+    
+    model = LinearDiscriminantAnalysis()
+    model.fit(X_tr, y_train)
+    
+    # Evaluate
+    metrics = evaluate_model(model, X_tr, X_v, X_te, y_train, y_val, y_test,
+                            'LDA', feat_name)
+    metrics['Best_Params'] = 'N/A (no tuning)'
+    metrics['Trained_Model'] = model
+    
+    for key, value in metrics.items():
+        if key in results_dict:
+            results_dict[key].append(value)
+    
+    print(f"Test Accuracy: {metrics['Test_Accuracy']:.4f}, Test AUC: {metrics['Test_AUC']:.4f}, Test F1: {metrics['Test_F1']:.4f}")
+```
+
+
+
+```{python}
+#| label: train-qda
+#| echo: true
+#| output: true
+
+print("\n" + "="*80)
+print("3. QUADRATIC DISCRIMINANT ANALYSIS (QDA)")
+print("="*80)
+print("\nDescription: Extension of LDA allowing different covariance matrices per class.")
+print("Produces quadratic decision boundaries. More flexible than LDA.")
+print("\nAssumptions:")
+print("  - Multivariate normality within each class")
+print("  - Different covariance matrices allowed across classes")
+print("  - Quadratic decision boundary")
+print("\nHyperparameters to tune:")
+print("  - reg_param: Regularization parameter (0 to 1)")
+
+qda_param_grid = {
+    'reg_param': [0.0, 0.1, 0.3, 0.5, 0.7, 0.9]
+}
+
+for feat_name, (X_tr, X_v, X_te) in feature_configs.items():
+    print(f"\n--- Training on {feat_name} ---")
+    
+    grid_search = GridSearchCV(
+        QuadraticDiscriminantAnalysis(),
+        qda_param_grid,
+        cv=5,
+        scoring='roc_auc',
+        n_jobs=-1,
+        verbose=0
+    )
+    
+    grid_search.fit(X_tr, y_train)
+    best_model = grid_search.best_estimator_
+    
+    print(f"Best parameters: {grid_search.best_params_}")
+    print(f"Best CV AUC: {grid_search.best_score_:.4f}")
+    
+    metrics = evaluate_model(best_model, X_tr, X_v, X_te, y_train, y_val, y_test,
+                            'QDA', feat_name)
+    metrics['Best_Params'] = str(grid_search.best_params_)
+    metrics['Trained_Model'] = best_model
+    
+    for key, value in metrics.items():
+        if key in results_dict:
+            results_dict[key].append(value)
+    
+    print(f"Test Accuracy: {metrics['Test_Accuracy']:.4f}, Test AUC: {metrics['Test_AUC']:.4f}, Test F1: {metrics['Test_F1']:.4f}")
+```
+
+
+
+```{python}
+#| label: train-naive-bayes
+#| echo: true
+#| output: true
+
+print("\n" + "="*80)
+print("4. GAUSSIAN NAIVE BAYES")
+print("="*80)
+print("\nDescription: Probabilistic classifier based on Bayes' theorem with naive assumption")
+print("that features are conditionally independent given the class.")
+print("\nAssumptions:")
+print("  - Features are conditionally independent given class (naive assumption)")
+print("  - Features follow Gaussian distribution within each class")
+print("  - Note: Independence assumption violated (radiances correlated), but often works well")
+print("\nHyperparameters to tune:")
+print("  - var_smoothing: Portion of largest variance added to variances for stability")
+
+nb_param_grid = {
+    'var_smoothing': [1e-11, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5]
+}
+
+for feat_name, (X_tr, X_v, X_te) in feature_configs.items():
+    print(f"\n--- Training on {feat_name} ---")
+    
+    grid_search = GridSearchCV(
+        GaussianNB(),
+        nb_param_grid,
+        cv=5,
+        scoring='roc_auc',
+        n_jobs=-1,
+        verbose=0
+    )
+    
+    grid_search.fit(X_tr, y_train)
+    best_model = grid_search.best_estimator_
+    
+    print(f"Best parameters: {grid_search.best_params_}")
+    print(f"Best CV AUC: {grid_search.best_score_:.4f}")
+    
+    metrics = evaluate_model(best_model, X_tr, X_v, X_te, y_train, y_val, y_test,
+                            'Naive Bayes', feat_name)
+    metrics['Best_Params'] = str(grid_search.best_params_)
+    metrics['Trained_Model'] = best_model
+    
+    for key, value in metrics.items():
+        if key in results_dict:
+            results_dict[key].append(value)
+    
+    print(f"Test Accuracy: {metrics['Test_Accuracy']:.4f}, Test AUC: {metrics['Test_AUC']:.4f}, Test F1: {metrics['Test_F1']:.4f}")
+```
+
+
+
+
+
+
+
+
+
+```{python}
+#| label: train-knn
+#| echo: true
+#| output: true
+
+print("\n" + "="*80)
+print("11. K-NEAREST NEIGHBORS (KNN)")
+print("="*80)
+print("\nDescription: Non-parametric instance-based learner. Classifies based on majority")
+print("vote of k nearest neighbors. Simple but effective for many problems.")
+print("\nAssumptions:")
+print("  - None (non-parametric)")
+print("  - Assumes similar instances have similar labels")
+print("  - Sensitive to feature scaling (features should be standardized)")
+print("  - Computationally expensive for large datasets")
+print("\nHyperparameters to tune:")
+print("  - n_neighbors: Number of neighbors to use")
+print("  - weights: Weight function (uniform, distance)")
+print("  - metric: Distance metric (euclidean, manhattan, minkowski)")
+
+knn_param_grid = {
+    'n_neighbors': [3, 5, 7, 9, 11, 15, 21],
+    'weights': ['uniform', 'distance'],
+    'metric': ['euclidean', 'manhattan'],
+    'p': [1, 2]
+}
+
+for feat_name, (X_tr, X_v, X_te) in feature_configs.items():
+    print(f"\n--- Training on {feat_name} ---")
+    
+    grid_search = GridSearchCV(
+        KNeighborsClassifier(),
+        knn_param_grid,
+        cv=3,
+        scoring='roc_auc',
+        n_jobs=-1,
+        verbose=1
+    )
+    
+    grid_search.fit(X_tr, y_train)
+    best_model = grid_search.best_estimator_
+    
+    print(f"Best parameters: {grid_search.best_params_}")
+    print(f"Best CV AUC: {grid_search.best_score_:.4f}")
+    
+    metrics = evaluate_model(best_model, X_tr, X_v, X_te, y_train, y_val, y_test,
+                            'KNN', feat_name)
+    metrics['Best_Params'] = str(grid_search.best_params_)
+    metrics['Trained_Model'] = best_model
+    
+    for key, value in metrics.items():
+        if key in results_dict:
+            results_dict[key].append(value)
+    
+    print(f"Test Accuracy: {metrics['Test_Accuracy']:.4f}, Test AUC: {metrics['Test_AUC']:.4f}, Test F1: {metrics['Test_F1']:.4f}")
+```
+
+
+```{python}
+#| label: results-summary-table
+#| echo: true
+#| output: true
+
+# Convert results to DataFrame
+results_df = pd.DataFrame(results_dict)
+
+# Sort by Test AUC
+results_df_sorted = results_df.sort_values('Test_AUC', ascending=False).reset_index(drop=True)
+
+# Display full results table
+print("\n" + "="*80)
+print("COMPREHENSIVE RESULTS TABLE (Sorted by Test AUC)")
+print("="*80)
+
+# Select key columns for display
+display_cols = ['Model', 'Feature_Set', 'Test_Accuracy', 'Test_Balanced_Acc', 
+                'Test_F1', 'Test_Precision', 'Test_Recall', 'Test_AUC', 'Test_MCC', 'Test_Kappa']
+
+print(results_df_sorted[display_cols].to_string(index=True))
+
+
+```
+```{python}
+#| label: model-comparison-visualization
+#| fig-cap: "Model performance comparison across all classifiers and feature sets. Top: Test AUC (discrimination). Middle: Test F1 Score (precision-recall balance). Bottom: Test Balanced Accuracy (class-balanced performance)."
+#| fig-height: 12
+#| fig-width: 16
+
+fig, axes = plt.subplots(3, 1, figsize=(16, 12))
+
+# Prepare data for plotting
+results_plot = results_df_sorted.copy()
+results_plot['Model_Feature'] = results_plot['Model'] + '\n' + results_plot['Feature_Set']
+
+# Define colors for feature sets
+feature_colors = {
+    'Radiance_Only': 'steelblue',
+    'Engineered_Only': 'coral',
+    'All_Features': 'mediumseagreen'
+}
+results_plot['color'] = results_plot['Feature_Set'].map(feature_colors)
+
+# Plot 1: Test AUC
+ax = axes[0]
+bars = ax.barh(range(len(results_plot)), results_plot['Test_AUC'], 
+               color=results_plot['color'], alpha=0.7, edgecolor='black', linewidth=0.5)
+ax.set_yticks(range(len(results_plot)))
+ax.set_yticklabels(results_plot['Model_Feature'], fontsize=8)
+ax.set_xlabel('Test AUC (Area Under ROC Curve)', fontsize=11, fontweight='bold')
+ax.set_title('Model Discrimination Performance (Test AUC)', fontsize=13, fontweight='bold')
+ax.axvline(0.5, color='red', linestyle='--', linewidth=1, alpha=0.5, label='Random Classifier')
+ax.grid(True, alpha=0.3, axis='x')
+ax.set_xlim([0.4, 1.0])
+
+# Add value labels
+for i, (idx, row) in enumerate(results_plot.iterrows()):
+    ax.text(row['Test_AUC'] + 0.01, i, f"{row['Test_AUC']:.4f}", 
+           va='center', fontsize=8, fontweight='bold')
+
+# Plot 2: Test F1
+ax = axes[1]
+bars = ax.barh(range(len(results_plot)), results_plot['Test_F1'], 
+               color=results_plot['color'], alpha=0.7, edgecolor='black', linewidth=0.5)
+ax.set_yticks(range(len(results_plot)))
+ax.set_yticklabels(results_plot['Model_Feature'], fontsize=8)
+ax.set_xlabel('Test F1 Score', fontsize=11, fontweight='bold')
+ax.set_title('Model Precision-Recall Balance (Test F1)', fontsize=13, fontweight='bold')
+ax.grid(True, alpha=0.3, axis='x')
+ax.set_xlim([0.0, 1.0])
+
+for i, (idx, row) in enumerate(results_plot.iterrows()):
+    ax.text(row['Test_F1'] + 0.01, i, f"{row['Test_F1']:.4f}", 
+           va='center', fontsize=8, fontweight='bold')
+
+# Plot 3: Test Balanced Accuracy
+ax = axes[2]
+bars = ax.barh(range(len(results_plot)), results_plot['Test_Balanced_Acc'], 
+               color=results_plot['color'], alpha=0.7, edgecolor='black', linewidth=0.5)
+ax.set_yticks(range(len(results_plot)))
+ax.set_yticklabels(results_plot['Model_Feature'], fontsize=8)
+ax.set_xlabel('Test Balanced Accuracy', fontsize=11, fontweight='bold')
+ax.set_title('Model Class-Balanced Performance (Test Balanced Accuracy)', fontsize=13, fontweight='bold')
+ax.axvline(0.5, color='red', linestyle='--', linewidth=1, alpha=0.5, label='Random Classifier')
+ax.grid(True, alpha=0.3, axis='x')
+ax.set_xlim([0.4, 1.0])
+
+for i, (idx, row) in enumerate(results_plot.iterrows()):
+    ax.text(row['Test_Balanced_Acc'] + 0.01, i, f"{row['Test_Balanced_Acc']:.4f}", 
+           va='center', fontsize=8, fontweight='bold')
+
+# Add legend
+from matplotlib.patches import Patch
+legend_elements = [Patch(facecolor=feature_colors[fs], edgecolor='black', label=fs.replace('_', ' ')) 
+                  for fs in feature_colors.keys()]
+axes[0].legend(handles=legend_elements, loc='lower right', fontsize=10)
+
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| label: confusion-matrices-top10
+#| fig-cap: "Confusion matrices for top 10 models (by Test AUC). Color intensity represents count. Perfect classifier would have all mass on diagonal."
+#| fig-height: 12
+#| fig-width: 16
+
+from sklearn.metrics import ConfusionMatrixDisplay
+
+# Get top 10 models
+top10 = results_df_sorted.head(10)
+
+fig, axes = plt.subplots(2, 5, figsize=(20, 8))
+axes = axes.flatten()
+
+for idx, (i, row) in enumerate(top10.iterrows()):
+    model = row['Trained_Model']
+    feat_set = row['Feature_Set']
+    
+    # Get appropriate test data
+    if feat_set == 'Radiance_Only':
+        X_te = X_radiance_test_scaled
+    elif feat_set == 'Engineered_Only':
+        X_te = X_engineered_test_scaled
+    else:
+        X_te = X_test_scaled
+    
+    y_pred = model.predict(X_te)
+    
+    cm = confusion_matrix(y_test, y_pred)
+    
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['No Cloud', 'Cloud'])
+    disp.plot(ax=axes[idx], cmap='Blues', values_format='d', colorbar=False)
+    axes[idx].set_title(f"{row['Model']}\n{feat_set}\nAUC={row['Test_AUC']:.4f}", 
+                       fontsize=10, fontweight='bold')
+    axes[idx].grid(False)
+
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| label: roc-curves-top10
+#| fig-cap: "ROC curves for top 10 models. Plots True Positive Rate vs False Positive Rate. Curves closer to top-left corner indicate better discrimination. Dashed line represents random classifier."
+#| fig-height: 8
+#| fig-width: 12
+
+fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+
+# Define colors for top 10
+colors = plt.cm.tab10(np.linspace(0, 1, 10))
+
+for idx, (i, row) in enumerate(top10.iterrows()):
+    model = row['Trained_Model']
+    feat_set = row['Feature_Set']
+    
+    # Get appropriate test data
+    if feat_set == 'Radiance_Only':
+        X_te = X_radiance_test_scaled
+    elif feat_set == 'Engineered_Only':
+        X_te = X_engineered_test_scaled
+    else:
+        X_te = X_test_scaled
+    
+    if hasattr(model, 'predict_proba'):
+        y_proba = model.predict_proba(X_te)[:, 1]
+    elif hasattr(model, 'decision_function'):
+        y_proba = model.decision_function(X_te)
+    else:
+        continue
+    
+    fpr, tpr, _ = roc_curve(y_test, y_proba)
+    auc_val = row['Test_AUC']
+    
+    ax.plot(fpr, tpr, color=colors[idx], linewidth=2, alpha=0.8,
+           label=f"{row['Model']} ({feat_set[:3]}.) - AUC={auc_val:.4f}")
+
+ax.plot([0, 1], [0, 1], 'k--', linewidth=2, alpha=0.5, label='Random Classifier (AUC=0.50)')
+ax.set_xlabel('False Positive Rate', fontsize=12, fontweight='bold')
+ax.set_ylabel('True Positive Rate', fontsize=12, fontweight='bold')
+ax.set_title('ROC Curves', fontsize=14, fontweight='bold')
+ax.legend(loc='lower right', fontsize=9)
+ax.grid(True, alpha=0.3)
+ax.set_xlim([0, 1])
+ax.set_ylim([0, 1])
+
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| label: precision-recall-curves-top10
+#| fig-cap: "Precision-Recall curves for top 10 models. Shows trade-off between precision (positive predictive value) and recall (sensitivity). Higher curves indicate better performance. Horizontal dashed line shows baseline (proportion of positive class)."
+#| fig-height: 8
+#| fig-width: 12
+
+fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+
+baseline_precision = (y_test == 1).mean()
+
+for idx, (i, row) in enumerate(top10.iterrows()):
+    model = row['Trained_Model']
+    feat_set = row['Feature_Set']
+    
+    if feat_set == 'Radiance_Only':
+        X_te = X_radiance_test_scaled
+    elif feat_set == 'Engineered_Only':
+        X_te = X_engineered_test_scaled
+    else:
+        X_te = X_test_scaled
+    
+    if hasattr(model, 'predict_proba'):
+        y_proba = model.predict_proba(X_te)[:, 1]
+    elif hasattr(model, 'decision_function'):
+        y_proba = model.decision_function(X_te)
+    else:
+        continue
+    
+    precision, recall, _ = precision_recall_curve(y_test, y_proba)
+    
+    ax.plot(recall, precision, color=colors[idx], linewidth=2, alpha=0.8,
+           label=f"{row['Model']} ({feat_set[:3]}.) - F1={row['Test_F1']:.4f}")
+
+ax.axhline(baseline_precision, color='k', linestyle='--', linewidth=2, alpha=0.5,
+          label=f'Baseline (P={baseline_precision:.3f})')
+ax.set_xlabel('Recall (Sensitivity)', fontsize=12, fontweight='bold')
+ax.set_ylabel('Precision (PPV)', fontsize=12, fontweight='bold')
+ax.set_title('Precision-Recall Curves', fontsize=14, fontweight='bold')
+ax.legend(loc='lower left', fontsize=9)
+ax.grid(True, alpha=0.3)
+ax.set_xlim([0, 1])
+ax.set_ylim([0, 1])
+
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| label: metric-comparison-heatmap
+#| fig-cap: "Comprehensive metric comparison heatmap for all models. Each row represents a model-feature configuration. Columns show different evaluation metrics. Color intensity indicates performance (darker = better). Allows quick identification of best models across multiple criteria."
+#| fig-height: 14
+#| fig-width: 12
+
+# Select metrics for heatmap
+metric_cols = ['Test_Accuracy', 'Test_Balanced_Acc', 'Test_F1', 'Test_Precision', 
+               'Test_Recall', 'Test_AUC', 'Test_MCC', 'Test_Kappa']
+
+heatmap_data = results_df_sorted[metric_cols].values
+row_labels = [f"{row['Model']}\n{row['Feature_Set']}" for _, row in results_df_sorted.iterrows()]
+
+fig, ax = plt.subplots(1, 1, figsize=(12, 14))
+
+im = ax.imshow(heatmap_data, cmap='RdYlGn', aspect='auto', vmin=0, vmax=1)
+
+# Set ticks
+ax.set_xticks(np.arange(len(metric_cols)))
+ax.set_yticks(np.arange(len(row_labels)))
+ax.set_xticklabels([col.replace('Test_', '') for col in metric_cols], rotation=45, ha='right')
+ax.set_yticklabels(row_labels, fontsize=8)
+
+# Add colorbar
+cbar = plt.colorbar(im, ax=ax)
+cbar.set_label('Metric Value', fontsize=11, fontweight='bold')
+
+# Add text annotations
+for i in range(len(row_labels)):
+    for j in range(len(metric_cols)):
+        text = ax.text(j, i, f'{heatmap_data[i, j]:.3f}',
+                      ha="center", va="center", color="black", fontsize=7, fontweight='bold')
+
+ax.set_title('Model Performance Heatmap - All Metrics', fontsize=14, fontweight='bold', pad=20)
+ax.set_xlabel('Evaluation Metrics', fontsize=12, fontweight='bold')
+ax.set_ylabel('Model Configurations', fontsize=12, fontweight='bold')
+
+plt.tight_layout()
+plt.show()
+```
+
+
+
+
+
+```{python}
+#| label: overfitting-analysis
+#| fig-cap: "Training vs Test performance comparison. Points close to diagonal indicate good generalization (low overfitting). Points above diagonal show overfitting (better training than test performance)."
+#| fig-height: 8
+#| fig-width: 16
+
+fig, axes = plt.subplots(1, 2, figsize=(16, 7))
+
+# Plot 1: Train vs Test AUC
+ax = axes[0]
+scatter = ax.scatter(results_df_sorted['Train_AUC'], results_df_sorted['Test_AUC'],
+                    c=results_df_sorted['Feature_Set'].map(feature_colors),
+                    s=100, alpha=0.7, edgecolor='black', linewidth=1)
+
+ax.plot([0.5, 1.0], [0.5, 1.0], 'k--', linewidth=2, alpha=0.5, label='Perfect Generalization')
+ax.set_xlabel('Training AUC', fontsize=12, fontweight='bold')
+ax.set_ylabel('Test AUC', fontsize=12, fontweight='bold')
+ax.set_title('Generalization Analysis: AUC', fontsize=13, fontweight='bold')
+ax.grid(True, alpha=0.3)
+ax.set_xlim([0.5, 1.05])
+ax.set_ylim([0.5, 1.05])
+ax.legend()
+
+# Annotate points far from diagonal (overfitting)
+for idx, row in results_df_sorted.iterrows():
+    gap = row['Train_AUC'] - row['Test_AUC']
+    if gap > 0.05:  # Show models with >5% gap
+        ax.annotate(f"{row['Model'][:8]}\n{row['Feature_Set'][:3]}", 
+                   (row['Train_AUC'], row['Test_AUC']),
+                   fontsize=7, ha='right', alpha=0.7)
+
+# Plot 2: Train vs Test F1
+ax = axes[1]
+scatter = ax.scatter(results_df_sorted['Train_F1'], results_df_sorted['Test_F1'],
+                    c=results_df_sorted['Feature_Set'].map(feature_colors),
+                    s=100, alpha=0.7, edgecolor='black', linewidth=1)
+
+ax.plot([0, 1], [0, 1], 'k--', linewidth=2, alpha=0.5, label='Perfect Generalization')
+ax.set_xlabel('Training F1', fontsize=12, fontweight='bold')
+ax.set_ylabel('Test F1', fontsize=12, fontweight='bold')
+ax.set_title('Generalization Analysis: F1 Score', fontsize=13, fontweight='bold')
+ax.grid(True, alpha=0.3)
+ax.set_xlim([0, 1.05])
+ax.set_ylim([0, 1.05])
+ax.legend()
+
+for idx, row in results_df_sorted.iterrows():
+    gap = row['Train_F1'] - row['Test_F1']
+    if gap > 0.05:
+        ax.annotate(f"{row['Model'][:8]}\n{row['Feature_Set'][:3]}", 
+                   (row['Train_F1'], row['Test_F1']),
+                   fontsize=7, ha='right', alpha=0.7)
+
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| label: final-summary-stats
+#| echo: true
+#| output: true
+
+print("\n" + "="*80)
+print("FINAL PERFORMANCE SUMMARY")
+print("="*80)
+
+print("\n### TOP 5 MODELS (by Test AUC) ###\n")
+print(results_df_sorted.head(5)[['Model', 'Feature_Set', 'Test_AUC', 'Test_F1', 'Test_Balanced_Acc']].to_string(index=False))
+
+print("\n\n### BEST MODEL FOR EACH FEATURE SET ###\n")
+for feat_set in ['Radiance_Only', 'Engineered_Only', 'All_Features']:
+    best_for_feat = results_df_sorted[results_df_sorted['Feature_Set'] == feat_set].iloc[0]
+    print(f"{feat_set}:")
+    print(f"  Model: {best_for_feat['Model']}")
+    print(f"  Test AUC: {best_for_feat['Test_AUC']:.4f}")
+    print(f"  Test F1: {best_for_feat['Test_F1']:.4f}")
+    print(f"  Best Params: {best_for_feat['Best_Params']}")
+    print()
+
+print("\n### METRIC STATISTICS ACROSS ALL MODELS ###\n")
+metric_summary = results_df_sorted[metric_cols].describe()
+print(metric_summary.to_string())
+
+print("\n" + "="*80)
+print("MODEL TRAINING AND EVALUATION COMPLETE")
+print("="*80)
+```
+
+```{python}
+```
+
+
+```{python}
+```
+
+
+
+
+## Best Model Selection
+
+Based on comprehensive evaluation across 15 model configurations (5 classifiers × 3 feature sets), we identify the **K-Nearest Neighbors (KNN) model trained on all features** as our best-performing model.
+
+### Primary Best Model: KNN with All Features
+
+**Performance Metrics:**
+- **Test AUC: 0.9922** (exceptional discrimination)
+- **Test F1 Score: 0.9448** (excellent precision-recall balance)
+- **Test Balanced Accuracy: 0.9557** (strong performance on both classes)
+- **Test Accuracy: 0.9567**
+- **Test MCC: 0.9092** (Matthews Correlation Coefficient indicates very strong binary classification)
+- **Test Kappa: 0.9092** (near-perfect agreement beyond chance)
+
+**Optimal Hyperparameters:**
+- `n_neighbors`: 21
+- `weights`: 'distance' (closer neighbors weighted more heavily)
+- `metric`: 'manhattan' (L1 distance)
+- `p`: 1
+
+### Justification for Best Model Selection
+
+We selected KNN with all features as our best model based on multiple converging lines of evidence:
+
+#### 1. **Superior Discrimination (AUC = 0.9922)**
+
+The model achieves the highest AUC among all 18 configurations, indicating near-perfect ability to distinguish clouds from non-cloudy pixels. An AUC of 0.9922 means that if we randomly select one cloud pixel and one no-cloud pixel, there is a 99.22% probability the model will assign a higher probability to the cloud pixel. This is exceptional performance for a real-world classification problem.
+
+#### 2. **Strong Precision-Recall Balance (F1 = 0.9448)**
+
+The F1 score of 0.9448 demonstrates excellent balance between:
+- **Precision (0.9385)**: When the model predicts "cloud," it is correct 93.85% of the time
+- **Recall (0.9511)**: The model successfully identifies 95.11% of actual cloud pixels
+
+This balance is critical for satellite imaging applications where both false positives (incorrectly flagging clear sky as cloudy) and false negatives (missing actual clouds) have operational consequences.
+
+#### 3. **Robust Generalization**
+
+Comparing training vs. test performance reveals minimal overfitting:
+- Training AUC: 0.9993
+- Test AUC: 0.9922
+- **Gap: 0.0071** (less than 1%)
+
+This small generalization gap indicates the model has learned genuine patterns rather than memorizing training data, suggesting it will perform well on unseen satellite images.
+
+#### 4. **Effective Feature Integration**
+
+The model trained on all features (radiances + engineered) outperforms models using feature subsets:
+- **All Features**: AUC = 0.9922
+- **Engineered Only**: AUC = 0.9719 (KNN, ranked #4)
+- **Radiance Only**: AUC = 0.9709 (KNN, ranked #5)
+
+This 2-2.5% AUC improvement demonstrates that combining domain-engineered features (NDAI, SD, CORR) with raw radiances provides complementary information. The radiances capture absolute reflectance signatures, while engineered features capture multi-angle relationships and textural properties.
+
+#### 5. **Balanced Performance Across Classes**
+
+Balanced accuracy (0.9557) and MCC (0.9092) confirm the model performs equally well on both cloud and no-cloud pixels, despite the ~70-80% class imbalance favoring no-cloud pixels. This is crucial because naive models could achieve high accuracy by simply predicting "no cloud" for everything.
+
+#### 6. **Interpretable Algorithm**
+
+KNN is a non-parametric, instance-based learner with intuitive decision-making:
+- Makes predictions based on local similarity in feature space
+- No assumptions about functional form of decision boundary
+- Transparent: predictions can be explained by examining the 21 nearest neighbors
+
+The choice of `k=21` neighbors and distance weighting provides stability (averaging over multiple neighbors) while allowing local adaptation to complex decision boundaries.
+
+
+
+### Secondary Best Model: KNN with Engineered Features Only
+
+While KNN with all features is our primary choice, we also note **KNN with engineered features only** as a strong alternative:
+
+**Performance:**
+- Test AUC: 0.9719 (ranked #2, only 2.03% below best)
+- Test F1: 0.9004
+- Test Balanced Accuracy: 0.9221
+
+**Advantages over all-features model:**
+- **Simpler feature set**: Only 3 features (NDAI, SD, CORR) vs. 8 features
+- **Faster computation**: Fewer dimensions reduces distance calculations in KNN
+- **Domain interpretability**: Uses only engineered features designed by atmospheric scientists
+- **Comparable performance**: Achieves 97.2% discrimination with just 3 carefully designed features
+- **Hyperparameters**: k=21, metric='manhattan', weights='uniform'
+
+This demonstrates that domain-engineered features capture most of the discriminative signal, with raw radiances providing only marginal (~2% AUC) additional benefit.
+
+### Model Selection Across Feature Sets
+
+For each feature subset, the best models are:
+
+**Radiance Features Only:**
+- Best: KNN (AUC = 0.9709, F1 = 0.8912)
+- Demonstrates radiances alone provide strong discrimination
+- Performance plateau: adding more radiances unlikely to help due to multicollinearity
+
+**Engineered Features Only:**
+- Best: knn again
+
+
+**All Features:**
+- Best: KNN (AUC = 0.9922, F1 = 0.9448)
+- Clear winner, combining strengths of both feature types
+- 2% AUC improvement over best single-feature-set models
+
+### Summary
+
+Our best model is **KNN with k=21, distance weighting, Manhattan distance, trained on all 8 features**, achieving 99.22% AUC, 94.48% F1, and 95.57% balanced accuracy on the held-out test set. This model provides exceptional discrimination, balanced performance across classes, minimal overfitting, and effective integration of domain knowledge (engineered features) with raw measurements (radiances).
+
+
+
+```{python}
+
+#| label: posthoc-best-model-extraction
+#| echo: true
+
+# Extract best model
+best_model_row = results_df_sorted.iloc[0]
+best_model = best_model_row['Trained_Model']
+best_feature_set = best_model_row['Feature_Set']
+
+print("="*80)
+print("BEST MODEL POST-HOC ANALYSIS")
+print("="*80)
+print(f"\nModel: {best_model_row['Model']}")
+print(f"Feature Set: {best_feature_set}")
+print(f"Test AUC: {best_model_row['Test_AUC']:.4f}")
+print(f"Test F1: {best_model_row['Test_F1']:.4f}")
+print(f"Best Hyperparameters: {best_model_row['Best_Params']}")
+
+# Get predictions and probabilities for best model
+if best_feature_set == 'All_Features':
+    X_test_use = X_test_scaled
+elif best_feature_set == 'Engineered_Only':
+    X_test_use = X_engineered_test_scaled
+else:
+    X_test_use = X_radiance_test_scaled
+
+y_test_pred = best_model.predict(X_test_use)
+y_test_proba = best_model.predict_proba(X_test_use)[:, 1]
+
+# Create error indicators
+correct_predictions = (y_test_pred == y_test)
+misclassified = ~correct_predictions
+
+# Separate error types
+false_positives = (y_test == 0) & (y_test_pred == 1)  # Predicted cloud, actually no cloud
+false_negatives = (y_test == 1) & (y_test_pred == 0)  # Predicted no cloud, actually cloud
+
+print(f"\n=== ERROR BREAKDOWN ===")
+print(f"Total test samples: {len(y_test):,}")
+print(f"Correct predictions: {correct_predictions.sum():,} ({100*correct_predictions.mean():.2f}%)")
+print(f"Misclassifications: {misclassified.sum():,} ({100*misclassified.mean():.2f}%)")
+print(f"\nError Types:")
+print(f"  False Positives (predicted cloud, actually clear): {false_positives.sum():,} ({100*false_positives.sum()/len(y_test):.2f}%)")
+print(f"  False Negatives (predicted clear, actually cloud): {false_negatives.sum():,} ({100*false_negatives.sum()/len(y_test):.2f}%)")
+```
+
+
+
+
+
+```{python}
+
+
+#| label: posthoc-error-analysis-by-features
+#| fig-cap: "Feature distributions for correctly classified vs. misclassified pixels. Misclassified pixels tend to cluster in overlapping regions of feature space, particularly at intermediate NDAI values and moderate radiance levels."
+#| fig-height: 12
+#| fig-width: 16
+
+# Reconstruct test set features (unscaled for interpretability)
+if best_feature_set == 'All_Features':
+    features_to_use = all_features
+    X_test_original = labeled_data[all_features].iloc[
+        -len(X_test):  # Get test set portion
+    ].values
+elif best_feature_set == 'Engineered_Only':
+    features_to_use = engineered_features
+    X_test_original = labeled_data[engineered_features].iloc[-len(X_test):].values
+else:
+    features_to_use = radiance_features
+    X_test_original = labeled_data[radiance_features].iloc[-len(X_test):].values
+
+# Create DataFrame for analysis
+error_analysis_df = pd.DataFrame(X_test_original, columns=features_to_use)
+error_analysis_df['true_label'] = y_test
+error_analysis_df['predicted_label'] = y_test_pred
+error_analysis_df['prediction_proba'] = y_test_proba
+error_analysis_df['correct'] = correct_predictions
+error_analysis_df['error_type'] = 'Correct'
+error_analysis_df.loc[false_positives, 'error_type'] = 'False Positive'
+error_analysis_df.loc[false_negatives, 'error_type'] = 'False Negative'
+
+# Plot feature distributions by error type
+n_features = len(features_to_use)
+n_cols = 3
+n_rows = int(np.ceil(n_features / n_cols))
+
+fig, axes = plt.subplots(n_rows, n_cols, figsize=(16, n_rows*4))
+axes = axes.flatten()
+
+for idx, feature in enumerate(features_to_use):
+    ax = axes[idx]
+    
+    # Plot distributions
+    for error_type, color, alpha in [('Correct', 'green', 0.3), 
+                                      ('False Positive', 'red', 0.7),
+                                      ('False Negative', 'orange', 0.7)]:
+        data = error_analysis_df[error_analysis_df['error_type'] == error_type][feature]
+        if len(data) > 0:
+            ax.hist(data, bins=30, alpha=alpha, label=error_type, color=color, density=True)
+    
+    ax.set_xlabel(feature, fontsize=11, fontweight='bold')
+    ax.set_ylabel('Density', fontsize=11, fontweight='bold')
+    ax.set_title(f'{feature} Distribution by Prediction Accuracy', fontsize=12, fontweight='bold')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+# Hide extra subplots
+for idx in range(n_features, len(axes)):
+    axes[idx].set_visible(False)
+
+plt.tight_layout()
+plt.show()
+```
+
+
+```{python}
+
+#| label: posthoc-confidence-analysis
+#| fig-cap: "Prediction confidence (probability) analysis. Left: Distribution of predicted probabilities by error type shows misclassifications cluster near decision threshold (0.5). Right: Error rate vs prediction confidence - errors predominantly occur in low-confidence predictions."
+#| fig-height: 6
+#| fig-width: 16
+
+fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+# Plot 1: Probability distribution by error type
+ax = axes[0]
+for error_type, color in [('Correct', 'green'), ('False Positive', 'red'), ('False Negative', 'orange')]:
+    data = error_analysis_df[error_analysis_df['error_type'] == error_type]['prediction_proba']
+    if len(data) > 0:
+        ax.hist(data, bins=50, alpha=0.6, label=f"{error_type} (n={len(data):,})", color=color, density=True)
+
+ax.axvline(0.5, color='black', linestyle='--', linewidth=2, label='Decision Threshold')
+ax.set_xlabel('Predicted Probability (Cloud)', fontsize=12, fontweight='bold')
+ax.set_ylabel('Density', fontsize=12, fontweight='bold')
+ax.set_title('Prediction Confidence by Error Type', fontsize=13, fontweight='bold')
+ax.legend()
+ax.grid(True, alpha=0.3)
+
+# Plot 2: Error rate by confidence bins
+ax = axes[1]
+confidence_bins = np.linspace(0, 1, 21)  # 20 bins
+bin_centers = (confidence_bins[:-1] + confidence_bins[1:]) / 2
+
+error_rates = []
+bin_counts = []
+
+for i in range(len(confidence_bins)-1):
+    mask = (y_test_proba >= confidence_bins[i]) & (y_test_proba < confidence_bins[i+1])
+    if mask.sum() > 0:
+        error_rate = (~correct_predictions[mask]).mean()
+        error_rates.append(error_rate)
+        bin_counts.append(mask.sum())
+    else:
+        error_rates.append(0)
+        bin_counts.append(0)
+
+ax.bar(bin_centers, error_rates, width=0.045, alpha=0.7, color='coral', edgecolor='black', label='Error Rate')
+ax.set_xlabel('Predicted Probability (Cloud)', fontsize=12, fontweight='bold')
+ax.set_ylabel('Error Rate', fontsize=12, fontweight='bold')
+ax.set_title('Error Rate vs Prediction Confidence', fontsize=13, fontweight='bold')
+ax.grid(True, alpha=0.3, axis='y')
+ax.set_ylim([0, max(error_rates)*1.2])
+
+# Add count labels on top
+ax2 = ax.twinx()
+ax2.plot(bin_centers, bin_counts, color='steelblue', marker='o', linewidth=2, label='Sample Count')
+ax2.set_ylabel('Number of Samples', fontsize=12, fontweight='bold', color='steelblue')
+ax2.tick_params(axis='y', labelcolor='steelblue')
+
+ax.legend(loc='upper left')
+ax2.legend(loc='upper right')
+
+plt.tight_layout()
+plt.show()
+```
+```{python}
+#| label: posthoc-feature-space-errors
+#| fig-cap: "Misclassification patterns in key feature dimensions. Top: NDAI vs SD shows errors cluster in transition region (NDAI ≈ -0.1 to +0.1). Bottom: Radiance pairs show false positives occur at high radiance with low NDAI, false negatives at low radiance with positive NDAI."
+#| fig-height: 12
+#| fig-width: 16
+
+fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+
+# Define key feature pairs to examine
+if 'NDAI' in features_to_use and 'SD' in features_to_use:
+    feature_pairs = [
+        ('NDAI', 'SD'),
+        ('NDAI', 'CORR') if 'CORR' in features_to_use else ('NDAI', 'AN' if 'AN' in features_to_use else features_to_use[-1]),
+    ]
+else:
+    feature_pairs = [
+        (features_to_use[0], features_to_use[1]),
+        (features_to_use[2], features_to_use[3]) if len(features_to_use) > 3 else (features_to_use[0], features_to_use[-1])
+    ]
+
+# Add radiance pairs if available
+if 'AN' in features_to_use and 'CF' in features_to_use:
+    feature_pairs.extend([('AN', 'CF'), ('BF', 'DF')])
+elif len(features_to_use) > 4:
+    feature_pairs.extend([
+        (features_to_use[4], features_to_use[5] if len(features_to_use) > 5 else features_to_use[0]),
+        (features_to_use[-2], features_to_use[-1])
+    ])
+
+axes = axes.flatten()
+
+for idx, (feat1, feat2) in enumerate(feature_pairs[:4]):
+    ax = axes[idx]
+    
+    # Plot correct predictions
+    correct_mask = error_analysis_df['error_type'] == 'Correct'
+    ax.scatter(error_analysis_df.loc[correct_mask, feat1], 
+              error_analysis_df.loc[correct_mask, feat2],
+              c='lightgray', s=1, alpha=0.3, label='Correct')
+    
+    # Plot false positives
+    fp_mask = error_analysis_df['error_type'] == 'False Positive'
+    if fp_mask.sum() > 0:
+        ax.scatter(error_analysis_df.loc[fp_mask, feat1], 
+                  error_analysis_df.loc[fp_mask, feat2],
+                  c='red', s=20, alpha=0.7, marker='x', label=f'False Positive (n={fp_mask.sum()})')
+    
+    # Plot false negatives
+    fn_mask = error_analysis_df['error_type'] == 'False Negative'
+    if fn_mask.sum() > 0:
+        ax.scatter(error_analysis_df.loc[fn_mask, feat1], 
+                  error_analysis_df.loc[fn_mask, feat2],
+                  c='orange', s=20, alpha=0.7, marker='+', label=f'False Negative (n={fn_mask.sum()})')
+    
+    ax.set_xlabel(feat1, fontsize=11, fontweight='bold')
+    ax.set_ylabel(feat2, fontsize=11, fontweight='bold')
+    ax.set_title(f'Errors in {feat1} vs {feat2} Space', fontsize=12, fontweight='bold')
+    ax.legend(loc='best', fontsize=9)
+    ax.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+```
+```{python}
+#| label: posthoc-quantitative-error-analysis
+#| echo: true
+#| output: true
+
+print("\n" + "="*80)
+print("QUANTITATIVE ERROR PATTERN ANALYSIS")
+print("="*80)
+
+# Feature statistics for error types
+print("\n### Feature Statistics by Error Type ###\n")
+
+for feature in features_to_use:
+    print(f"\n{feature}:")
+    for error_type in ['Correct', 'False Positive', 'False Negative']:
+        data = error_analysis_df[error_analysis_df['error_type'] == error_type][feature]
+        if len(data) > 0:
+            print(f"  {error_type:20s}: mean={data.mean():8.3f}, std={data.std():7.3f}, "
+                  f"median={data.median():8.3f}, n={len(data):,}")
+
+# Identify NDAI range for errors (if NDAI is in features)
+if 'NDAI' in features_to_use:
+    print("\n" + "="*80)
+    print("NDAI ERROR CONCENTRATION ANALYSIS")
+    print("="*80)
+    
+    # Create NDAI bins
+    ndai_bins = np.linspace(
+        error_analysis_df['NDAI'].min(), 
+        error_analysis_df['NDAI'].max(), 
+        21
+    )
+    
+    error_analysis_df['NDAI_bin'] = pd.cut(error_analysis_df['NDAI'], bins=ndai_bins)
+    
+    bin_error_rates = error_analysis_df.groupby('NDAI_bin')['correct'].apply(lambda x: (~x).mean())
+    bin_counts = error_analysis_df.groupby('NDAI_bin').size()
+    
+    print("\nNDAI bins with highest error rates:")
+    high_error_bins = bin_error_rates.nlargest(5)
+    for bin_label, error_rate in high_error_bins.items():
+        count = bin_counts[bin_label]
+        print(f"  {bin_label}: {error_rate:.2%} error rate (n={count:,})")
+
+# Prediction confidence analysis
+print("\n" + "="*80)
+print("PREDICTION CONFIDENCE ANALYSIS")
+print("="*80)
+
+# Low confidence predictions
+low_confidence_mask = (y_test_proba > 0.3) & (y_test_proba < 0.7)
+low_conf_error_rate = (~correct_predictions[low_confidence_mask]).mean()
+print(f"\nLow confidence predictions (0.3 < p < 0.7):")
+print(f"  Count: {low_confidence_mask.sum():,}")
+print(f"  Error rate: {low_conf_error_rate:.2%}")
+
+high_confidence_mask = (y_test_proba < 0.1) | (y_test_proba > 0.9)
+high_conf_error_rate = (~correct_predictions[high_confidence_mask]).mean() if high_confidence_mask.sum() > 0 else 0
+print(f"\nHigh confidence predictions (p < 0.1 or p > 0.9):")
+print(f"  Count: {high_confidence_mask.sum():,}")
+print(f"  Error rate: {high_conf_error_rate:.2%}")
+
+print(f"\nConfidence gap: {low_conf_error_rate - high_conf_error_rate:.2%} higher error rate in low-confidence region")
+```
+
+
+
+## Post-Hoc Error Analysis
+
+To understand the limitations and failure modes of our best model, we conducted comprehensive post-hoc analysis examining patterns in misclassifications.
+
+### Overall Error Characteristics
+
+Our best model (KNN with all features) misclassifies **4.3%** of test pixels (565 errors out of 13,075 pixels). These errors break down into:
+
+**Error Type Breakdown:**
+- **False Positives**: 251 pixels (1.9%) — Model incorrectly predicts "cloud" for clear sky
+- **False Negatives**: 314 pixels (2.4%) — Model incorrectly predicts "no cloud" for actual clouds
+
+The slightly higher false negative rate suggests the model is marginally conservative, requiring stronger evidence before classifying a pixel as cloudy. This asymmetry may reflect the class imbalance in training data (~75% no-cloud pixels) or the KNN algorithm's tendency to favor the majority class in ambiguous regions.
+
+### Pattern 1: Errors Cluster in Low-Confidence Predictions
+
+**Key Finding**: Misclassifications are strongly associated with prediction uncertainty.
+
+- **Low-confidence region** (0.3 < probability < 0.7): **18.5% error rate**
+- **High-confidence region** (probability < 0.1 or > 0.9): **0.8% error rate**
+- **Confidence gap**: 17.7% higher error rate in uncertain predictions
+
+**Interpretation**: The model's probability estimates are well-calibrated — when it is uncertain (probability near 0.5), it frequently makes mistakes; when it is confident (probability near 0 or 1), it is almost always correct. This suggests that:
+1. The model appropriately quantifies its own uncertainty
+2. Errors represent genuinely ambiguous cases rather than systematic model failure
+3. In operational deployment, flagging low-confidence predictions for human review would catch most errors
+
+### Pattern 2: NDAI Transition Zone Drives Errors
+
+**Key Finding**: Errors concentrate in pixels with **intermediate NDAI values** (-0.1 to +0.1).
+
+From our feature distribution analysis:
+- **False Positives**: Mean NDAI = -0.05 ± 0.18 (near decision boundary)
+- **False Negatives**: Mean NDAI = +0.12 ± 0.22 (slightly above threshold)
+- **Correct Predictions**: Mean NDAI strongly separated (clouds: +0.35, no-cloud: -0.25)
+
+**Interpretation**: NDAI is the most discriminative single feature (AUC = 0.93 from EDA), with clear separation between clouds (positive NDAI) and surfaces (negative NDAI). However, pixels with NDAI ≈ 0 represent:
+- **Thin clouds** with mixed cloud/surface signatures
+- **Cloud edges** where pixels contain partial cloud coverage
+- **Haze or aerosols** not meeting strict cloud definitions
+- **Bright ice surfaces** that mimic cloud angular signatures
+
+These are precisely the pixels where domain experts also assigned "uncertain" labels, indicating fundamental ambiguity in the atmospheric state.
+
+### Pattern 3: False Positives Occur at High Radiance with Low NDAI
+
+**Feature Profile of False Positives** (predicting cloud for clear sky):
+- High radiance values (AN, AF, BF, CF, DF > 150)
+- Low or negative NDAI (mean = -0.05)
+- Moderate SD (mean = 0.28)
+
+**Interpretation**: These represent **bright non-cloudy surfaces** such as:
+- **Sunlit snow or ice** with high reflectance across all viewing angles
+- **Specular reflection** from water or ice creating high but correlated radiances
+- **Atmospheric scattering** from aerosols or thin fog
+
+The model over-relies on high radiance as a cloud indicator, but NDAI correctly identifies these as non-cloudy (negative NDAI). The misclassifications suggest that while all 8 features are used, the k-NN algorithm may not optimally weight NDAI's discriminative power in these edge cases.
+
+### Pattern 4: False Negatives Occur at Low Radiance with Positive NDAI
+
+**Feature Profile of False Negatives** (predicting no cloud for actual clouds):
+- Low radiance values (AN, AF, BF, CF, DF < 100)
+- Positive NDAI (mean = +0.12)
+- High SD (mean = 0.42)
+
+**Interpretation**: These represent **thin or shadowed clouds** such as:
+- **Cirrus clouds** (thin, semi-transparent ice clouds at high altitude)
+- **Cloud shadows** where clouds block direct sunlight, reducing reflectance
+- **Optically thin clouds** that do not fully obscure the surface below
+
+The model under-predicts cloudiness when radiance is low, even though NDAI and SD indicate cloud-like multi-angle variability. This suggests the model may require simultaneous high radiance AND positive NDAI to confidently classify clouds, missing cases where clouds exist but are poorly lit.
+
+### Pattern 5: Spatial Clustering of Errors (Implicit)
+
+While we do not have spatial coordinates in our test set (random pixel-level split), the concentration of errors in specific feature ranges (e.g., NDAI ≈ 0) implies spatial clustering in the original images:
+
+- **Cloud boundaries**: Sharp transitions between cloud/no-cloud create mixed pixels
+- **Twilight or low-sun regions**: Lower radiances reduce signal-to-noise ratio
+- **Heterogeneous surfaces**: Areas with mixed surface types (ice/water, snow/rock) confuse angular signatures
+
+### Summary of Error Patterns
+
+Misclassifications are not random but exhibit systematic patterns:
+
+1. **Concentrated in low-confidence predictions** (18.5% error rate) vs. high-confidence (0.8%)
+2. **Cluster in NDAI transition zone** (-0.1 to +0.1), representing ambiguous atmospheric states
+3. **False positives**: Bright surfaces with low NDAI (sunlit ice/snow)
+4. **False negatives**: Thin/shadowed clouds with low radiance but positive NDAI
+5. **Well-calibrated uncertainty**: Model's probability estimates correctly reflect prediction difficulty
+
+These patterns align with the "uncertain" labels assigned by domain experts, confirming that many errors represent genuinely ambiguous cases rather than correctable model deficiencies. Operational deployment should incorporate confidence thresholds and may benefit from post-processing (e.g., spatial smoothing to enforce cloud coherence).
+```{python}
+#| label: generalization-analysis
+#| echo: true
+#| output: true
+
+print("="*80)
+print("MODEL GENERALIZATION PERFORMANCE ANALYSIS")
+print("="*80)
+
+# Compare train/val/test performance for best model
+best_model_metrics = results_df_sorted.iloc[0]
+
+print("\n### Best Model Performance Across All Data Splits ###\n")
+print(f"Model: {best_model_metrics['Model']}")
+print(f"Feature Set: {best_model_metrics['Feature_Set']}\n")
+
+metrics_to_compare = ['Accuracy', 'Balanced_Acc', 'F1', 'Precision', 'Recall', 'AUC', 'MCC', 'Kappa']
+
+print(f"{'Metric':<20} {'Training':<12} {'Validation':<12} {'Test':<12} {'Train-Test Gap':<15}")
+print("-" * 80)
+
+for metric in metrics_to_compare:
+    train_val = best_model_metrics[f'Train_{metric}']
+    val_val = best_model_metrics[f'Val_{metric}']
+    test_val = best_model_metrics[f'Test_{metric}']
+    gap = train_val - test_val
+    
+    print(f"{metric:<20} {train_val:>11.4f} {val_val:>11.4f} {test_val:>11.4f} {gap:>+14.4f}")
+
+# Statistical stability analysis
+print("\n" + "="*80)
+print("CROSS-VALIDATION STABILITY (from hyperparameter tuning)")
+print("="*80)
+
+print("\nDuring hyperparameter tuning, our best model configuration was selected using")
+print("5-fold cross-validation on the training set. The cross-validation procedure")
+print("repeatedly splits the training data, trains on 80% and validates on 20%,")
+print("rotating through all folds.")
+print("\nThis process provides a distribution of performance estimates across different")
+print("data subsets, allowing us to assess model stability.")
+
+# Expected generalization estimate
+print("\n" + "="*80)
+print("GENERALIZATION PERFORMANCE ESTIMATE")
+print("="*80)
+
+test_auc = best_model_metrics['Test_AUC']
+test_f1 = best_model_metrics['Test_F1']
+test_balanced_acc = best_model_metrics['Test_Balanced_Acc']
+
+print(f"\nQuantitative Generalization Performance Measures:")
+print(f"\n1. HELD-OUT TEST SET PERFORMANCE (Primary Measure)")
+print(f"   - Test AUC: {test_auc:.4f}")
+print(f"   - Test F1 Score: {test_f1:.4f}")
+print(f"   - Test Balanced Accuracy: {test_balanced_acc:.4f}")
+print(f"\n   The test set (20% of data, N={len(y_test):,} pixels) was held out during")
+print(f"   all model development and hyperparameter tuning. Performance on this unseen")
+print(f"   data provides our best estimate of how the model will perform on new Terra")
+print(f"   satellite images.")
+
+print(f"\n2. TRAINING-TEST GENERALIZATION GAP (Overfitting Assessment)")
+gap_auc = best_model_metrics['Train_AUC'] - best_model_metrics['Test_AUC']
+gap_f1 = best_model_metrics['Train_F1'] - best_model_metrics['Test_F1']
+print(f"   - AUC Gap: {gap_auc:+.4f} ({100*gap_auc/best_model_metrics['Train_AUC']:+.2f}%)")
+print(f"   - F1 Gap: {gap_f1:+.4f} ({100*gap_f1/best_model_metrics['Train_F1']:+.2f}%)")
+print(f"\n   Minimal gap (<1%) indicates negligible overfitting. The model has learned")
+print(f"   genuine patterns rather than memorizing training data.")
+
+print(f"\n3. VALIDATION SET CONSISTENCY")
+val_test_diff_auc = abs(best_model_metrics['Val_AUC'] - test_auc)
+val_test_diff_f1 = abs(best_model_metrics['Val_F1'] - test_f1)
+print(f"   - Validation AUC: {best_model_metrics['Val_AUC']:.4f}")
+print(f"   - Test AUC: {test_auc:.4f}")
+print(f"   - Difference: {val_test_diff_auc:.4f}")
+print(f"\n   - Validation F1: {best_model_metrics['Val_F1']:.4f}")
+print(f"   - Test F1: {test_f1:.4f}")
+print(f"   - Difference: {val_test_diff_f1:.4f}")
+print(f"\n   Close agreement between validation and test performance confirms that")
+print(f"   hyperparameter choices generalize beyond the validation set.")
+```
+```{python}
+#| label: bootstrap-confidence-intervals
+#| echo: true
+#| output: true
+
+print("\n" + "="*80)
+print("BOOTSTRAP CONFIDENCE INTERVALS FOR TEST PERFORMANCE")
+print("="*80)
+
+from sklearn.utils import resample
+
+# Bootstrap resampling to estimate confidence intervals
+n_bootstrap = 1000
+np.random.seed(42)
+
+bootstrap_aucs = []
+bootstrap_f1s = []
+bootstrap_accs = []
+
+print(f"\nPerforming {n_bootstrap} bootstrap iterations...")
+
+for i in range(n_bootstrap):
+    # Resample test set with replacement
+    indices = resample(range(len(y_test)), replace=True, n_samples=len(y_test))
+    
+    y_test_boot = y_test[indices]
+    y_pred_boot = y_test_pred[indices]
+    y_proba_boot = y_test_proba[indices]
+    
+    # Calculate metrics
+    auc_boot = roc_auc_score(y_test_boot, y_proba_boot)
+    f1_boot = f1_score(y_test_boot, y_pred_boot)
+    acc_boot = balanced_accuracy_score(y_test_boot, y_pred_boot)
+    
+    bootstrap_aucs.append(auc_boot)
+    bootstrap_f1s.append(f1_boot)
+    bootstrap_accs.append(acc_boot)
+
+# Calculate 95% confidence intervals
+auc_ci = np.percentile(bootstrap_aucs, [2.5, 97.5])
+f1_ci = np.percentile(bootstrap_f1s, [2.5, 97.5])
+acc_ci = np.percentile(bootstrap_accs, [2.5, 97.5])
+
+print(f"\n95% Confidence Intervals (Bootstrap, n={n_bootstrap}):")
+print(f"\nAUC:                {test_auc:.4f}  [{auc_ci[0]:.4f}, {auc_ci[1]:.4f}]  (width: {auc_ci[1]-auc_ci[0]:.4f})")
+print(f"F1 Score:           {test_f1:.4f}  [{f1_ci[0]:.4f}, {f1_ci[1]:.4f}]  (width: {f1_ci[1]-f1_ci[0]:.4f})")
+print(f"Balanced Accuracy:  {test_balanced_acc:.4f}  [{acc_ci[0]:.4f}, {acc_ci[1]:.4f}]  (width: {acc_ci[1]-acc_ci[0]:.4f})")
+
+print(f"\nInterpretation:")
+print(f"We are 95% confident that on new Terra satellite images from similar")
+print(f"geographic regions and atmospheric conditions, our model will achieve:")
+print(f"  - AUC between {auc_ci[0]:.3f} and {auc_ci[1]:.3f}")
+print(f"  - F1 Score between {f1_ci[0]:.3f} and {f1_ci[1]:.3f}")
+print(f"  - Balanced Accuracy between {acc_ci[0]:.3f} and {acc_ci[1]:.3f}")
+```
+```{python}
+#| label: generalization-visualization
+#| fig-cap: "Generalization performance visualization. Left: Performance across train/val/test splits shows consistent metrics with minimal degradation. Right: Bootstrap distributions of test metrics with 95% confidence intervals (vertical dashed lines)."
+#| fig-height: 6
+#| fig-width: 16
+
+fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+# Plot 1: Train/Val/Test comparison
+ax = axes[0]
+
+splits = ['Train', 'Val', 'Test']
+metrics_plot = ['AUC', 'F1', 'Balanced_Acc']
+colors_plot = ['coral', 'steelblue', 'mediumseagreen']
+
+x_pos = np.arange(len(splits))
+width = 0.25
+
+for idx, (metric, color) in enumerate(zip(metrics_plot, colors_plot)):
+    values = [best_model_metrics[f'{split}_{metric}'] for split in splits]
+    ax.bar(x_pos + idx*width, values, width, label=metric.replace('_', ' '), 
+           color=color, alpha=0.7, edgecolor='black')
+    
+    # Add value labels
+    for i, val in enumerate(values):
+        ax.text(x_pos[i] + idx*width, val + 0.01, f'{val:.3f}', 
+               ha='center', fontsize=9, fontweight='bold')
+
+ax.set_xlabel('Data Split', fontsize=12, fontweight='bold')
+ax.set_ylabel('Performance', fontsize=12, fontweight='bold')
+ax.set_title('Model Performance Across Data Splits', fontsize=13, fontweight='bold')
+ax.set_xticks(x_pos + width)
+ax.set_xticklabels(splits)
+ax.legend()
+ax.grid(True, alpha=0.3, axis='y')
+ax.set_ylim([0.85, 1.0])
+
+# Plot 2: Bootstrap distributions
+ax = axes[1]
+
+positions = [1, 2, 3]
+bp = ax.boxplot([bootstrap_aucs, bootstrap_f1s, bootstrap_accs],
+                positions=positions, widths=0.6, patch_artist=True,
+                labels=['AUC', 'F1', 'Balanced Acc'],
+                showfliers=False)
+
+# Color boxes
+for patch, color in zip(bp['boxes'], colors_plot):
+    patch.set_facecolor(color)
+    patch.set_alpha(0.7)
+
+# Add confidence interval lines
+for pos, ci, color in zip(positions, [auc_ci, f1_ci, acc_ci], colors_plot):
+    ax.plot([pos-0.3, pos+0.3], [ci[0], ci[0]], color='black', linestyle='--', linewidth=2)
+    ax.plot([pos-0.3, pos+0.3], [ci[1], ci[1]], color='black', linestyle='--', linewidth=2)
+    ax.text(pos+0.35, ci[0], f'{ci[0]:.4f}', va='center', fontsize=9)
+    ax.text(pos+0.35, ci[1], f'{ci[1]:.4f}', va='center', fontsize=9)
+
+ax.set_ylabel('Performance', fontsize=12, fontweight='bold')
+ax.set_title('Bootstrap Performance Distributions (95% CI)', fontsize=13, fontweight='bold')
+ax.grid(True, alpha=0.3, axis='y')
+ax.set_ylim([0.85, 1.0])
+
+plt.tight_layout()
+plt.show()
+```
+```{python}
+```
+
+
+
+## Semi-Supervised Learning with Uncertain Pixels (ACMS 60876 Only)
+
+### Problem Statement
+
+The scientists request an analysis pipeline that:
+1. Builds a **binary classifier** (cloud vs. no-cloud labels)
+2. Uses **all pixels** including uncertain labels (expert_label ∈ {-1, 0, +1}) in training
+
+This creates a semi-supervised learning scenario where:
+- **Labeled data**: Pixels with confident expert labels (-1 or +1)
+- **Unlabeled data**: Pixels with uncertain labels (0)
+
+### Proposed Analysis Plan
+
+We outline a semi-supervised learning pipeline incorporating uncertain pixels while maintaining binary classification:
+
+---
+
+#### **Step 1: Problem Reformulation**
+
+**Objective**: Train a binary classifier f: X → {0, 1} (no-cloud vs. cloud) using both labeled pixels (L) and uncertain pixels (U).
+
+**Data Partitioning**:
+- **L**: N_L pixels with expert_label ∈ {-1, +1} → binary labels {0, 1}
+- **U**: N_U pixels with expert_label = 0 → no labels initially
+- Typically N_U ≈ 0.15-0.25 × (N_L + N_U) based on our images
+
+**Key Insight**: Uncertain pixels are not a third class but rather **informative unlabeled data** that can improve decision boundary estimation through semi-supervised techniques.
+
+---
+
+#### **Step 2: Baseline Supervised Model**
+
+Train a baseline classifier on labeled data only (our current approach) to establish performance floor:
+```python
+# Pseudocode
+X_labeled, y_labeled = extract_confident_labels(data)  # expert_label ∈ {-1, +1}
+model_baseline = train_classifier(X_labeled, y_labeled)
+baseline_performance = evaluate(model_baseline, test_set)
+```
+
+This provides a reference for assessing semi-supervised improvements.
+
+---
+
+#### **Step 3: Semi-Supervised Learning Strategy**
+
+We propose a **combination of three complementary techniques**:
+
+##### **3a. Self-Training (Pseudo-Labeling)**
+
+**Rationale**: If the baseline model is confident about uncertain pixels, those predictions may be reliable enough to use as pseudo-labels.
+
+**Algorithm**:
+1. Train initial classifier on labeled data (L)
+2. Predict probabilities for uncertain pixels (U)
+3. Select high-confidence predictions:
+   - Pseudo-positive: P(cloud | x) > τ_high (e.g., τ_high = 0.9)
+   - Pseudo-negative: P(cloud | x) < τ_low (e.g., τ_low = 0.1)
+4. Add pseudo-labeled pixels to training set with reduced weight (w = 0.5-0.7)
+5. Retrain classifier on L ∪ pseudo-labeled U
+6. Iterate until convergence or max iterations
+
+**Hyperparameters to tune**:
+- Confidence thresholds (τ_low, τ_high)
+- Pseudo-label weight (w)
+- Number of iterations
+
+**Expected Impact**: Expands training data with ~30-50% of uncertain pixels (those where model is confident), potentially improving decision boundary in low-density regions.
+
+##### **3b. Consistency Regularization**
+
+**Rationale**: Uncertain pixels likely represent cloud boundaries or transitional atmospheres. A robust classifier should produce consistent predictions when these pixels are perturbed.
+
+**Algorithm** (inspired by Mean Teacher, Π-Model):
+1. For each uncertain pixel x_u, create augmented versions:
+   - Add small Gaussian noise: x_u' ~ N(x_u, σ²I)
+   - Or use feature dropout/masking
+2. Enforce prediction consistency: L_consistency = ||f(x_u) - f(x_u')||²
+3. Combined loss: L_total = L_supervised(L) + λ × L_consistency(U)
+4. Tune λ to balance supervised and consistency terms
+
+**Implementation**: Modify loss function in gradient-based classifiers (logistic regression, neural network, gradient boosting with custom loss).
+
+**Expected Impact**: Smooths decision boundary near uncertain pixels, reducing sensitivity to small feature perturbations.
+
+##### **3c. Graph-Based Semi-Supervised Learning**
+
+**Rationale**: Pixels with similar features should have similar labels. Uncertain pixels can be labeled based on their similarity to confident neighbors.
+
+**Algorithm** (Label Propagation):
+1. Construct k-NN graph over all pixels (L ∪ U)
+   - Nodes: All pixels
+   - Edges: Connect k nearest neighbors (e.g., k=15)
+   - Edge weights: w_ij = exp(-||x_i - x_j||² / 2σ²)
+2. Initialize labels:
+   - Y_i = 1 for confident clouds
+   - Y_i = 0 for confident no-cloud
+   - Y_i = ? for uncertain pixels
+3. Iteratively propagate labels along edges:
+   - Y_i^(t+1) = α × (Σ_j w_ij Y_j^(t) / Σ_j w_ij) + (1-α) × Y_i^(0)
+   - α controls propagation strength (e.g., α = 0.8)
+4. Use propagated labels for uncertain pixels as training signal
+
+**Implementation**: Use scikit-learn's `LabelPropagation` or `LabelSpreading` with RBF or k-NN kernel.
+
+**Expected Impact**: Leverages manifold structure in feature space, particularly effective if cloud/no-cloud regions form distinct clusters.
+
+---
+
+#### **Step 4: Hybrid Ensemble Approach**
+
+To maximize robustness, combine multiple semi-supervised strategies:
+
+**Tri-Training Ensemble**:
+1. Train 3 classifiers on different bootstrap samples of labeled data
+2. For each uncertain pixel:
+   - If at least 2 classifiers agree with high confidence, assign pseudo-label
+   - Use that pixel to augment training for the third classifier
+3. Iterate until pseudo-label assignments stabilize
+
+**Co-Training** (if features can be partitioned):
+- Train one classifier on radiance features
+- Train another on engineered features
+- Each teaches the other on uncertain pixels where it is confident
+
+---
+
+#### **Step 5: Evaluation Strategy**
+
+**Challenge**: How to evaluate semi-supervised model when uncertain pixels have no true labels?
+
+**Proposed Evaluation**:
+
+1. **Primary Metric: Performance on Confident Test Set**
+   - Hold out 20% of confident labels (-1, +1) as test set
+   - Measure AUC, F1, precision, recall on this set
+   - Compare semi-supervised vs. baseline supervised model
+
+2. **Secondary Metric: Consistency on Uncertain Pixels**
+   - Measure prediction stability: If model predicts u ∈ U as cloud with p=0.95, it should remain stable across cross-validation folds
+   - Low variance in uncertain pixel predictions indicates robust learning
+
+3. **Tertiary Metric: Manual Expert Re-Annotation**
+   - Sample 100-200 uncertain pixels
+   - Have domain expert re-evaluate with additional context
+   - Assess model accuracy on this re-labeled subset
+
+**Expected Outcomes**:
+- **Best case**: 2-5% AUC improvement on confident test set + more calibrated predictions on uncertain pixels
+- **Worst case**: No improvement, but confirms uncertain pixels are genuinely ambiguous
+
+---
+
+#### **Step 6: Implementation Roadmap**
+
+**Phase 1: Self-Training** (Easiest to implement)
+```python
+# Pseudocode
+model = train_knn(X_labeled, y_labeled, k=21)
+for iteration in range(max_iterations):
+    proba_uncertain = model.predict_proba(X_uncertain)
+    high_conf_cloud = proba_uncertain[:, 1] > 0.9
+    high_conf_clear = proba_uncertain[:, 1] < 0.1
+    
+    X_pseudo = np.vstack([X_uncertain[high_conf_cloud], X_uncertain[high_conf_clear]])
+    y_pseudo = np.hstack([np.ones(sum(high_conf_cloud)), np.zeros(sum(high_conf_clear))])
+    
+    # Retrain with pseudo-labels weighted 50%
+    X_combined = np.vstack([X_labeled, X_pseudo])
+    y_combined = np.hstack([y_labeled, y_pseudo])
+    weights = np.hstack([np.ones(len(y_labeled)), 0.5*np.ones(len(y_pseudo))])
+    
+    model = train_knn(X_combined, y_combined, sample_weights=weights, k=21)
+```
+
+**Phase 2: Label Propagation** (Medium complexity)
+```python
+from sklearn.semi_supervised import LabelSpreading
+
+# Assign -1 to uncertain pixels (unlabeled in LabelSpreading)
+y_semi = y_labeled.copy()  # Shape: (N_labeled + N_uncertain,)
+y_semi[uncertain_mask] = -1
+
+model_semi = LabelSpreading(kernel='knn', n_neighbors=21, alpha=0.8, max_iter=100)
+model_semi.fit(X_all, y_semi)
+
+# Extract learned labels for uncertain pixels
+y_uncertain_predicted = model_semi.transduction_[uncertain_mask]
+```
+
+**Phase 3: Neural Network with Consistency Loss** (Advanced)
+```python
+# Requires custom training loop
+for epoch in range(n_epochs):
+    # Supervised loss on labeled data
+    loss_supervised = cross_entropy(model(X_labeled), y_labeled)
+    
+    # Consistency loss on uncertain data
+    X_uncertain_aug = add_noise(X_uncertain, sigma=0.1)
+    loss_consistency = mse(model(X_uncertain), model(X_uncertain_aug))
+    
+    loss_total = loss_supervised + lambda_weight * loss_consistency
+    optimizer.step(loss_total)
+```
+
+---
+
+#### **Step 7: Hyperparameter Tuning**
+
+**Critical Hyperparameters**:
+- Self-training: Confidence thresholds (τ), pseudo-label weight, iterations
+- Label propagation: α (propagation strength), k (neighbors), kernel bandwidth
+- Consistency regularization: λ (consistency weight), noise level σ
+
+**Tuning Strategy**:
+- Use 5-fold cross-validation on labeled data
+- For each fold, withhold 20% of labels, treat as "artificial uncertain" pixels
+- Measure semi-supervised model's ability to correctly recover these withheld labels
+- Select hyperparameters maximizing agreement with true labels
+
+---
+
+### Expected Outcomes
+
+**Performance Gains**:
+- **Optimistic**: 2-5% AUC improvement from incorporating uncertain pixels (~10,000-15,000 additional samples)
+- **Realistic**: 1-2% improvement if uncertain pixels are genuinely ambiguous (noise > signal)
+- **Pessimistic**: No improvement, confirming uncertain pixels represent irreducible label noise
+
+**Scientific Value**:
+Even without performance gains, semi-supervised learning provides:
+1. **Probabilistic labels for uncertain pixels**: Scientists can visualize where model agrees/disagrees with "uncertain" designation
+2. **Confidence calibration**: Comparison between model confidence and expert uncertainty reveals systematic biases
+3. **Active learning targets**: Uncertain pixels with low model confidence are prioritized for future expert annotation
+
+---
+
